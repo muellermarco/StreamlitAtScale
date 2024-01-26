@@ -1,7 +1,7 @@
 import streamlit as st
-from atscale_local.client import Client
-from atscale_local.data_model import DataModel
-from atscale_local.project import Project
+from atscale.client import Client
+from atscale.data_model import DataModel
+from atscale.project import Project
 
 
 st.write("My first App")
