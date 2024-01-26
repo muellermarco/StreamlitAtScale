@@ -1,7 +1,7 @@
 import streamlit as st
-from atscale.client import Client
-from atscale.data_model import DataModel
-from atscale.project import Project
+from atscale_local.client import Client
+from atscale_local.data_model import DataModel
+from atscale_local.project import Project
 
 
 st.write("My first App")
@@ -12,10 +12,10 @@ client = Client(server='http://ailink-public.atscale.com',
                 organization='default'
                )
 #Sales Insights
-project = client.select_project(published_project_id='53d49296-e7d1-4a35-5f49-5621175219d9',draft_project_id='985a44f0-b1a4-4e69-4a2f-6d13471ad35b')
+project:Project = client.select_project(published_project_id='53d49296-e7d1-4a35-5f49-5621175219d9',draft_project_id='985a44f0-b1a4-4e69-4a2f-6d13471ad35b')
 
 # Internet Sales Cube
-data_model = project.select_data_model()
+data_model:DataModel = project.select_data_model()
 
 df_dimensionality = data_model.get_data(['category', 'department', 'item', 'state', 'store', 'total_sales', 
                                       'total_units_sold', 'population_variance_sales', 'average_sales', 
