@@ -6,33 +6,38 @@ import pandas as pd
 
 st.title("AtScale python API Demo")
 #st.secrets["atscale_host"]
-client = Client(server=st.secrets["atscale_host"],
-                username=st.secrets["atscale_user"],
-                password=st.secrets["atscale_password"],
-                organization='default'
-               )
-
-test = client.connect()
+if 'client' not in st.session_state:
+    st.session_state['client'] = Client(server=st.secrets["atscale_host"],
+                    username=st.secrets["atscale_user"],
+                    password=st.secrets["atscale_password"],
+                    organization='default'
+                )
+if 'connected' not in st.session_state:
+    st.session_state['client'].connect()
+    st.session_state['connected'] = 1
 
 #Sales Insights
-project:Project = client.select_project(published_project_id='3d965074-0e49-42df-4151-74541f019bd0',draft_project_id='2e0203d7-fa65-4c28-7b65-357eb4aee0ea')
-data_model:DataModel = project.select_data_model("b89a2fb7-74f4-4828-706e-70f7186e10a0")
+if 'project' not in st.session_state:
+    st.session_state['project'] = st.session_state['client'].select_project(published_project_id='3d965074-0e49-42df-4151-74541f019bd0',draft_project_id='2e0203d7-fa65-4c28-7b65-357eb4aee0ea')
+if 'data_model' not in st.session_state:    
+    st.session_state['data_model'] = st.session_state['project'].select_data_model("b89a2fb7-74f4-4828-706e-70f7186e10a0")
 
-st.header("Ordered Quantity by Color")
+if 'dimensions' not in st.session_state:
+    st.session_state['dimensions'] = pd.DataFrame(st.session_state['data_model'].get_all_categorical_feature_names())
 
-bar_cart_data = data_model.get_data(['orderquantity1','CountryCity'])
+selected_dimension = st.selectbox('What Dimensions do you want to use?', st.session_state['dimensions'])
+if 'measures' not in st.session_state:
+    st.session_state['measures'] = pd.DataFrame(st.session_state['data_model'].get_all_numeric_feature_names())
 
-st.bar_chart(data=bar_cart_data, x="CountryCity", y="orderquantity1")
+selected_measure = st.selectbox('What Measures do you want to use?', st.session_state['measures'])
 
-line_cart_data = data_model.get_data(['orderquantity1','Order DayMonth'])
+'You selected: ', selected_dimension, 'and ', selected_measure
 
-st.line_chart(data=line_cart_data,x="Order DayMonth", y="orderquantity1")
+dynamic_data = st.session_state['data_model'].get_data([selected_dimension, selected_measure])
 
-dimensions = pd.DataFrame(data_model.get_all_categorical_feature_names())
 
-dimensions
+st.bar_chart(data=dynamic_data, x=selected_dimension, y=selected_measure)
 
-measures = pd.DataFrame(data_model.get_all_numeric_feature_names())
-
-measures
+def get_dimesions():
+    
 
