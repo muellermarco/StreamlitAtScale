@@ -1,3 +1,4 @@
 atscale
 cryptocode
 pycryptodome
+streamlit
