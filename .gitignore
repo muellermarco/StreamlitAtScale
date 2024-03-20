@@ -162,4 +162,4 @@ cython_debug/
 
 #Macos files
 .DS_Store
-.ipynb
+*.ipynb
