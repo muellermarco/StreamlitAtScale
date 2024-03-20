@@ -4,6 +4,8 @@ from atscale.data_model import DataModel
 from atscale.project import Project
 import pandas as pd
 
+st.image("AtScale_Logo.png")
+
 st.title("AtScale python API Demo")
 #st.secrets["atscale_host"]
 if 'client' not in st.session_state:
@@ -33,11 +35,6 @@ selected_measure = st.selectbox('What Measures do you want to use?', st.session_
 
 'You selected: ', selected_dimension, 'and ', selected_measure
 
-dynamic_data = st.session_state['data_model'].get_data([selected_dimension, selected_measure])
-
+dynamic_data = st.session_state['data_model'].get_data(feature_list=[selected_dimension, selected_measure], comment='Streamlit App by Marco Mueller')
 
 st.bar_chart(data=dynamic_data, x=selected_dimension, y=selected_measure)
-
-def get_dimesions():
-    
-
