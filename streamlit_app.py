@@ -6,7 +6,7 @@ from atscale.project import Project
 
 st.write("My first App")
 
-client = Client(server='http://52.249.223.76',
+client = Client(server=at.secrets["atscale_host"],
                 username=st.secrets["atscale_user"],
                 password=st.secrets["atscale_password"],
                 organization='default'
