@@ -8,7 +8,7 @@ st.write("My first App")
 
 client = Client(server='http://ailink-public.atscale.com',
                 username=st.secrets["atscale_user"],
-                password='8Z2Qvr#WK9',
+                password=st.secrets["atscale_password"],
                 organization='default'
                )
 #Sales Insights
