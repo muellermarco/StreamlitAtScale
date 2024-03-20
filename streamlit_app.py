@@ -6,11 +6,16 @@ from atscale.project import Project
 
 st.write("My first App")
 
-client = Client(server='http://ailink-public.atscale.com',
+client = Client(server='http://52.249.223.76',
                 username=st.secrets["atscale_user"],
                 password=st.secrets["atscale_password"],
                 organization='default'
                )
+
+test = client.connect()
+st.write(test)
+
+"""
 #Sales Insights
 project:Project = client.select_project(published_project_id='53d49296-e7d1-4a35-5f49-5621175219d9',draft_project_id='985a44f0-b1a4-4e69-4a2f-6d13471ad35b')
 
@@ -23,3 +28,4 @@ df_dimensionality = data_model.get_data(['category', 'department', 'item', 'stat
                                       'sample_standard_deviation_units_sold', 'population_variance_units_sold', 
                                       'max_units_sold', 'sample_variance_units_sold'])
 df_dimensionality.tail()
+"""
