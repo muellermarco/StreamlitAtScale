@@ -11,4 +11,4 @@ client = Client(server=st.secrets["atscale_host"],
                 organization='default'
                )
 
-#test = client.connect()
+test = client.connect()
