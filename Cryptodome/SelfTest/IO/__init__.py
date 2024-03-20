@@ -35,8 +35,8 @@
 
 def get_tests(config={}):
     tests = []
-    from Cryptodome.SelfTest.IO import test_PKCS8;     tests += test_PKCS8.get_tests(config=config)
-    from Cryptodome.SelfTest.IO import test_PBES;      tests += test_PBES.get_tests(config=config)
+    from Crypto.SelfTest.IO import test_PKCS8;     tests += test_PKCS8.get_tests(config=config)
+    from Crypto.SelfTest.IO import test_PBES;      tests += test_PBES.get_tests(config=config)
     return tests
 
 if __name__ == '__main__':

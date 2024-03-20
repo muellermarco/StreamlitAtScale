@@ -26,15 +26,15 @@ Output Feedback (CFB) mode.
 
 __all__ = ['OfbMode']
 
-from Cryptodome.Util.py3compat import _copy_bytes
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
+from Crypto.Util.py3compat import _copy_bytes
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
                                   create_string_buffer, get_raw_buffer,
                                   SmartPointer, c_size_t, c_uint8_ptr,
                                   is_writeable_buffer)
 
-from Cryptodome.Random import get_random_bytes
+from Crypto.Random import get_random_bytes
 
-raw_ofb_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_ofb", """
+raw_ofb_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_ofb", """
                         int OFB_start_operation(void *cipher,
                                                 const uint8_t iv[],
                                                 size_t iv_len,
@@ -246,7 +246,7 @@ def _create_ofb_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        The underlying block cipher, a module from ``Cryptodome.Cipher``.
+        The underlying block cipher, a module from ``Crypto.Cipher``.
 
     :Keywords:
       iv : bytes/bytearray/memoryview

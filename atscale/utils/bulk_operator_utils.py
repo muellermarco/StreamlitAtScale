@@ -1,8 +1,8 @@
 from copy import deepcopy
-import inspect
+from inspect import getfullargspec
 from typing import List, Dict, Callable
-from atscale.connection.connection import _Connection
 
+from atscale.connection.connection import _Connection
 from atscale.errors import atscale_errors
 from atscale.utils import model_utils, project_utils, validation_utils
 from atscale.parsers import project_parser
@@ -51,7 +51,7 @@ def bulk_create_aggregate_feature(
     from atscale.data_model import DataModel
     from atscale.utils.feature_utils import _create_aggregate_feature
 
-    inspection = inspect.getfullargspec(DataModel.create_aggregate_feature)
+    inspection = getfullargspec(DataModel.create_aggregate_feature)
     # don't want to edit the dictionary they passed in
     working_parameter_list = deepcopy(parameter_list)
     # check our inputs are valid for the function we intend to call
@@ -61,42 +61,19 @@ def bulk_create_aggregate_feature(
     feature_name_column = "new_feature_name"
     # check that no duplicate names were passed in
     features_to_create = [x.get(feature_name_column) for x in working_parameter_list]
-    dupes_found = validation_utils.validate_no_duplicates_in_list(features_to_create)
-    if dupes_found:
-        starting_err_msg = (
-            f"The following duplicated {feature_name_column} parameters were passed. "
-            f"This parameter must be unique."
-        )
-        counter = 0
-        for dupe in dupes_found:
-            if counter >= error_limit:
-                counter += 1
-                break
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {dupe} appeared at indices: {dupes_found[dupe]}"
-        if counter >= error_limit:
-            starting_err_msg += f"\n\t{len(dupes_found) - counter} more duplicates"
-        raise atscale_errors.UserError(starting_err_msg)
+    _check_bulk_feature_creation_duplicate(
+        features_to_create=features_to_create,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
-    # check that there will not be name collisions with the created
-    existing_query_names_index = [
-        (index, value) for index, value in enumerate(features_to_create) if value in feature_dict
-    ]
-    if existing_query_names_index:
-        starting_err_msg = (
-            f"The following {feature_name_column} parameters were passed that collide with an "
-            f"existing feature in the Data Model."
-        )
-        counter = 0
-        for existing_value in existing_query_names_index:
-            if counter >= error_limit:
-                counter += 1
-                break
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {existing_value[1]} appeared at index: {existing_value[0]}"
-        if counter >= error_limit:
-            starting_err_msg += f"And \n\t{len(existing_query_names_index) -counter} more collisions hidden after exceeding error_limit"
-        raise atscale_errors.UserError(starting_err_msg)
+    # check that there will not be name collisions with the created features
+    _check_bulk_feature_creation_collision(
+        features_to_create=features_to_create,
+        feature_dict=feature_dict,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
     # cube_dict for dataset and column validation
     data_model_dict = project_parser.get_data_model(project_dict, data_model_id)
@@ -139,7 +116,7 @@ def bulk_create_aggregate_feature(
 
     # raise the appropriate errors
     if invalid_datasets:
-        starting_err_msg = "The following fact_dataset_name parameters were passed that do not exist in the Data Model."
+        starting_err_msg = f"The following fact_dataset_name parameters were passed that do not exist in the Data Model."
         counter = 0
         for index_val, dataset in invalid_datasets.items():
             if counter >= error_limit:
@@ -149,7 +126,7 @@ def bulk_create_aggregate_feature(
             starting_err_msg += f"\n\tFact Dataset {dataset} appeared at index: {index_val}"
         if counter >= error_limit:
             starting_err_msg += f"\n\t{len(invalid_datasets.items()) - counter} more errors"
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.ObjectNotFoundError(starting_err_msg)
     if invalid_columns:
         starting_err_msg = (
             "The following column_name parameters were passed do not exist in the given dataset."
@@ -166,7 +143,7 @@ def bulk_create_aggregate_feature(
 
         if counter >= error_limit:
             starting_err_msg += f"\n\t{len(invalid_columns.items()) - counter} more columns"
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.ObjectNotFoundError(starting_err_msg)
 
     # call the underlying function
     for parameter_dict in working_parameter_list:
@@ -199,7 +176,7 @@ def bulk_create_calculated_column(
     from atscale.data_model import DataModel
     from atscale.utils.project_utils import add_calculated_column_to_project_dataset
 
-    inspection = inspect.getfullargspec(DataModel.create_calculated_column)
+    inspection = getfullargspec(DataModel.create_calculated_column)
 
     # don't want to edit the dictionary they passed in
     working_parameter_list = deepcopy(parameter_list)
@@ -211,43 +188,19 @@ def bulk_create_calculated_column(
     feature_name_column = "column_name"
     # check that no duplicate names were passed in
     features_to_create = [x.get(feature_name_column) for x in working_parameter_list]
-    dupes_found = validation_utils.validate_no_duplicates_in_list(features_to_create)
+    _check_bulk_feature_creation_duplicate(
+        features_to_create=features_to_create,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
-    if dupes_found:
-        starting_err_msg = (
-            f"The following duplicated {feature_name_column} parameters were passed. "
-            f"This parameter must be unique."
-        )
-        counter = 0
-        for dupe in dupes_found:
-            if counter >= error_limit:
-                counter += 1
-                break
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {dupe} appeared at indices: {dupes_found[dupe]}"
-        if counter >= error_limit:
-            starting_err_msg += f"\n\t{len(dupes_found) - counter} more duplicates"
-        raise atscale_errors.UserError(starting_err_msg)
-
-    # check that there will not be name collisions with the created
-    existing_query_names_index = [
-        (index, value) for index, value in enumerate(features_to_create) if value in feature_dict
-    ]
-    if existing_query_names_index:
-        starting_err_msg = (
-            f"The following {feature_name_column} parameters were passed that collide with an "
-            f"existing feature in the Data Model."
-        )
-        counter = 0
-        for existing_value in existing_query_names_index:
-            if counter >= error_limit:
-                counter += 1
-                continue
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {existing_value[1]} appeared at index: {existing_value[0]}"
-        if counter >= error_limit:
-            starting_err_msg += f"And \n\t{len(existing_query_names_index)-counter } more collisions hidden after exceeding error_limit"
-        raise atscale_errors.UserError(starting_err_msg)
+    # check that there will not be name collisions with the created features
+    _check_bulk_feature_creation_collision(
+        features_to_create=features_to_create,
+        feature_dict=feature_dict,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
     # cube_dict for dataset and column validation
     invalid_datasets = {}
@@ -285,7 +238,7 @@ def bulk_create_calculated_column(
             starting_err_msg += f"\n\tDataset {dataset} appeared at index: {index_val}"
         if counter >= error_limit:
             starting_err_msg += f"\n\t{len(invalid_datasets.items()) - counter} more nonexistent dataset_name parameters."
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.ObjectNotFoundError(starting_err_msg)
     if invalid_qds_datasets:
         starting_err_msg = (
             f"The following dataset_name parameters were passed that match to a qds,"
@@ -300,7 +253,7 @@ def bulk_create_calculated_column(
             starting_err_msg += f"\n\tInvalid dataset {dataset} appeared at index: {index_val}"
         if counter >= error_limit:
             starting_err_msg += f"\n\t{len(invalid_qds_datasets.items()) - counter} more invalid dataset_name parameters that match to a query dataset."
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.WorkFlowError(starting_err_msg)
 
     original_project_dict = deepcopy(project_dict)
     sql_compilation_errors = []
@@ -337,7 +290,7 @@ def bulk_create_calculated_column(
             starting_err_msg += (
                 f"\n\t{len(sql_compilation_errors) - counter} more SQL compilation errors"
             )
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.ValidationError(starting_err_msg)
 
 
 def bulk_create_calculated_feature(
@@ -361,7 +314,7 @@ def bulk_create_calculated_feature(
     from atscale.data_model import DataModel
     from atscale.utils.feature_utils import _create_calculated_feature
 
-    inspection = inspect.getfullargspec(DataModel.create_calculated_feature)
+    inspection = getfullargspec(DataModel.create_calculated_feature)
 
     # don't want to edit the dictionary they passed in
     working_parameter_list = deepcopy(parameter_list)
@@ -373,42 +326,19 @@ def bulk_create_calculated_feature(
     feature_name_column = "new_feature_name"
     # check that no duplicate names were passed in
     features_to_create = [x.get(feature_name_column) for x in working_parameter_list]
-    dupes_found = validation_utils.validate_no_duplicates_in_list(features_to_create)
-    if dupes_found:
-        starting_err_msg = (
-            f"The following duplicated {feature_name_column} parameters were passed. "
-            f"This parameter must be unique."
-        )
-        counter = 0
-        for dupe in dupes_found:
-            if counter >= error_limit:
-                counter += 1
-                break
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {dupe} appeared at indices: {dupes_found[dupe]}"
-        if counter >= error_limit:
-            starting_err_msg += f"\n\t{len(dupes_found) - counter} more duplications."
-        raise atscale_errors.UserError(starting_err_msg)
+    _check_bulk_feature_creation_duplicate(
+        features_to_create=features_to_create,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
-    # check that there will not be name collisions with the created
-    existing_query_names_index = [
-        (index, value) for index, value in enumerate(features_to_create) if value in feature_dict
-    ]
-    if existing_query_names_index:
-        starting_err_msg = (
-            f"The following {feature_name_column} parameters were passed that collide with an "
-            f"existing feature in the Data Model."
-        )
-        counter = 0
-        for existing_value in existing_query_names_index:
-            if counter >= error_limit:
-                counter += 1
-                break
-            counter += 1
-            starting_err_msg += f"\n\t{feature_name_column} parameter {existing_value[1]} appeared at index: {existing_value[0]}"
-        if counter >= error_limit:
-            starting_err_msg += f"And \n\t{len(existing_query_names_index) - counter} more collisions hidden after exceeding error_limit"
-        raise atscale_errors.UserError(starting_err_msg)
+    # check that there will not be name collisions with the created features
+    _check_bulk_feature_creation_collision(
+        features_to_create=features_to_create,
+        feature_dict=feature_dict,
+        feature_name_column=feature_name_column,
+        error_limit=error_limit,
+    )
 
     # validate the mdx
     invalid_mdx = {}
@@ -433,7 +363,7 @@ def bulk_create_calculated_feature(
             starting_err_msg += (
                 f"\n\t{len(invalid_mdx.items()) - counter} more invalid mdx expressions."
             )
-        raise atscale_errors.UserError(starting_err_msg)
+        raise atscale_errors.ValidationError(starting_err_msg)
 
     # call the underlying function
     for parameter_dict in working_parameter_list:
@@ -445,3 +375,47 @@ def bulk_create_calculated_feature(
         parameter_dict.pop("new_feature_name", "")
         # left off here, need to test passing with ** and make sure it checks the key names as param names
         _create_calculated_feature(**parameter_dict)
+
+
+def _check_bulk_feature_creation_duplicate(features_to_create, feature_name_column, error_limit):
+    # looks for duplicate input parameters for features to be created
+    dupes_found = validation_utils.validate_no_duplicates_in_list(features_to_create)
+    if dupes_found:
+        starting_err_msg = (
+            f"The following duplicated {feature_name_column} parameters were passed. "
+            f"This parameter must be unique."
+        )
+        counter = 0
+        for dupe in dupes_found:
+            if counter >= error_limit:
+                counter += 1
+                break
+            counter += 1
+            starting_err_msg += f"\n\t{feature_name_column} parameter {dupe} appeared at indices: {dupes_found[dupe]}"
+        if counter >= error_limit:
+            starting_err_msg += f"\n\t{len(dupes_found) - counter} more duplicates"
+        raise ValueError(starting_err_msg)
+
+
+def _check_bulk_feature_creation_collision(
+    features_to_create, feature_dict, feature_name_column, error_limit
+):
+    # check that there will not be name collisions with the created columns
+    existing_query_names_index = [
+        (index, value) for index, value in enumerate(features_to_create) if value in feature_dict
+    ]
+    if existing_query_names_index:
+        starting_err_msg = (
+            f"The following {feature_name_column} parameters were passed that collide with an "
+            f"existing feature in the Data Model."
+        )
+        counter = 0
+        for existing_value in existing_query_names_index:
+            if counter >= error_limit:
+                counter += 1
+                break
+            counter += 1
+            starting_err_msg += f"\n\t{feature_name_column} parameter {existing_value[1]} appeared at index: {existing_value[0]}"
+        if counter >= error_limit:
+            starting_err_msg += f"And \n\t{len(existing_query_names_index) - counter} more collisions hidden after exceeding error_limit"
+        raise atscale_errors.CollisionError(starting_err_msg)

@@ -22,14 +22,14 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.AES"""
+"""Self-test suite for Crypto.Cipher.AES"""
 
 from __future__ import print_function
 
 import unittest
-from Cryptodome.Hash import SHA256
-from Cryptodome.Cipher import AES
-from Cryptodome.Util.py3compat import *
+from Crypto.Hash import SHA256
+from Crypto.Cipher import AES
+from Crypto.Util.py3compat import *
 from binascii import hexlify
 
 # This is a list of (plaintext, ciphertext, key[, description[, params]]) tuples.
@@ -1327,7 +1327,7 @@ class TestOutput(unittest.TestCase):
 
 
 def get_tests(config={}):
-    from Cryptodome.Util import _cpu_features
+    from Crypto.Util import _cpu_features
     from .common import make_block_tests
 
     tests = make_block_tests(AES, "AES", test_data, {'use_aesni': False})

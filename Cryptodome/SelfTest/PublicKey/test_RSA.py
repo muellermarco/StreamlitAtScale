@@ -22,17 +22,17 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.PublicKey.RSA"""
+"""Self-test suite for Crypto.PublicKey.RSA"""
 
 __revision__ = "$Id$"
 
 import os
 import pickle
 from pickle import PicklingError
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 import unittest
-from Cryptodome.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
+from Crypto.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
 
 class RSATest(unittest.TestCase):
     # Test vectors from "RSA-OAEP and RSA-PSS test vectors (.zip file)"
@@ -42,7 +42,7 @@ class RSATest(unittest.TestCase):
 
     # from oaep-int.txt
 
-    # TODO: PyCryptodome treats the message as starting *after* the leading "00"
+    # TODO: PyCrypto treats the message as starting *after* the leading "00"
     # TODO: That behaviour should probably be changed in the future.
     plaintext = """
            eb 7a 19 ac e9 e3 00 63 50 e3 29 50 4b 45 e2
@@ -88,9 +88,9 @@ class RSATest(unittest.TestCase):
 
     def setUp(self):
         global RSA, Random, bytes_to_long
-        from Cryptodome.PublicKey import RSA
-        from Cryptodome import Random
-        from Cryptodome.Util.number import bytes_to_long, inverse
+        from Crypto.PublicKey import RSA
+        from Crypto import Random
+        from Crypto.Util.number import bytes_to_long, inverse
         self.n = bytes_to_long(a2b_hex(self.modulus))
         self.p = bytes_to_long(a2b_hex(self.prime_factor))
 
@@ -186,7 +186,7 @@ class RSATest(unittest.TestCase):
         tup = (self.n, self.e, self.d, self.p, self.q, 10)
         self.assertRaises(ValueError, self.rsa.construct, tup)
 
-        from Cryptodome.Util.number import inverse
+        from Crypto.Util.number import inverse
         tup = (self.n, self.e, self.d, self.p, self.q, inverse(self.q, self.p))
         self.assertRaises(ValueError, self.rsa.construct, tup)
 
@@ -214,9 +214,11 @@ class RSATest(unittest.TestCase):
         rsa_obj = self.rsa.generate(1024)
 
         self.assertRaises(ValueError, rsa_obj._decrypt, rsa_obj.n)
+        self.assertRaises(ValueError, rsa_obj._decrypt_to_bytes, rsa_obj.n)
         self.assertRaises(ValueError, rsa_obj._encrypt, rsa_obj.n)
 
         self.assertRaises(ValueError, rsa_obj._decrypt, -1)
+        self.assertRaises(ValueError, rsa_obj._decrypt_to_bytes, -1)
         self.assertRaises(ValueError, rsa_obj._encrypt, -1)
 
     def test_size(self):
@@ -225,7 +227,7 @@ class RSATest(unittest.TestCase):
         self.assertEqual(pub.size_in_bytes(), 128)
 
     def _check_private_key(self, rsaObj):
-        from Cryptodome.Math.Numbers import Integer
+        from Crypto.Math.Numbers import Integer
 
         # Check capabilities
         self.assertEqual(1, rsaObj.has_private())
@@ -264,6 +266,8 @@ class RSATest(unittest.TestCase):
 
         # Public keys should not be able to sign or decrypt
         self.assertRaises(TypeError, rsaObj._decrypt,
+                bytes_to_long(ciphertext))
+        self.assertRaises(TypeError, rsaObj._decrypt_to_bytes,
                 bytes_to_long(ciphertext))
 
         # Check __eq__ and __ne__

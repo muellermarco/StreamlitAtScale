@@ -1,11 +1,11 @@
 import unittest
 from binascii import unhexlify, hexlify
 
-from Cryptodome.Util.py3compat import tobytes
-from Cryptodome.Util.strxor import strxor_c
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import tobytes
+from Crypto.Util.strxor import strxor_c
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Hash import KMAC128, KMAC256
+from Crypto.Hash import KMAC128, KMAC256
 
 
 class KMACTest(unittest.TestCase):

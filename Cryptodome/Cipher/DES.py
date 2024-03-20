@@ -33,14 +33,14 @@ Module's constants for the modes of operation supported with Single DES:
 
 import sys
 
-from Cryptodome.Cipher import _create_cipher
-from Cryptodome.Util.py3compat import byte_string
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Cipher import _create_cipher
+from Crypto.Util.py3compat import byte_string
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   c_size_t, c_uint8_ptr)
 
 _raw_des_lib = load_pycryptodome_raw_lib(
-                "Cryptodome.Cipher._raw_des",
+                "Crypto.Cipher._raw_des",
                 """
                 int DES_start_operation(const uint8_t key[],
                                         size_t key_len,

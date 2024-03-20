@@ -31,22 +31,22 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.CMAC"""
+"""Self-test suite for Crypto.Hash.CMAC"""
 
 import json
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import tobytes
+from Crypto.Util.py3compat import tobytes
 
-from Cryptodome.Hash import CMAC
-from Cryptodome.Cipher import AES, DES3
-from Cryptodome.Hash import SHAKE128
+from Crypto.Hash import CMAC
+from Crypto.Cipher import AES, DES3
+from Crypto.Hash import SHAKE128
 
-from Cryptodome.Util.strxor import strxor
+from Crypto.Util.strxor import strxor
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors_wycheproof
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors_wycheproof
 
 # This is a list of (key, data, result, description, module) tuples.
 test_data = [

@@ -2,21 +2,14 @@ import copy
 import logging
 import uuid
 import pandas as pd
-from typing import List, Set, Union, Tuple, Dict, Any
-from atscale.base.enums import (
-    Aggs,
-    Measure,
-    Level,
-    Hierarchy,
-    FeatureType,
-)
+from typing import Dict, List, Set, Union, Tuple
+from atscale.base import enums
 from atscale.connection.connection import _Connection
 from atscale.db.sql_connection import SQLConnection
-from atscale.utils.dmv_utils import get_dmv_data
-from atscale.utils import db_utils, model_utils, input_utils
+from atscale.utils import db_utils, model_utils, input_utils, dmv_utils
 from atscale.errors import atscale_errors
-from atscale.parsers import project_parser
-from atscale.base.enums import CheckFeaturesErrMsg
+from atscale.parsers import project_parser, dictionary_parser
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,51 +19,154 @@ def _get_draft_features(
     data_model_name,
     feature_list: List[str] = None,
     folder_list: List[str] = None,
-    feature_type: FeatureType = FeatureType.ALL,
-) -> dict:
-    """Gets the feature names and metadata for each feature in the published DataModel.
+    feature_type: enums.FeatureType = enums.FeatureType.ALL,
+) -> Dict:
+    """Gets the feature names and metadata for each feature in the draft DataModel.
 
     Args:
-        project_dict (dict): the metadata of the project to extract
+        project_dict (Dict): the metadata of the project to extract
         data_model_name (str): the name of the data_model of interest
         feature_list (List[str], optional): A list of features to return. Defaults to None to return all.
         folder_list (List[str], optional): A list of folders to filter by. Defaults to None to ignore folder.
-        feature_type (FeatureType, optional): The type of features to filter by. Options
-            include FeatureType.ALL, FeatureType.CATEGORICAL, or FeatureType.NUMERIC. Defaults to ALL.
+        feature_type (enums.FeatureType, optional): The type of features to filter by. Options
+            include enums.FeatureType.ALL, enums.FeatureType.CATEGORICAL, or enums.FeatureType.NUMERIC. Defaults to ALL.
 
     Returns:
-        dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
+        Dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
               while the inner keys break down metadata of the features.
     """
     start_dict = {}
     # metrical attributes and levels
     start_dict.update(_parse_categorical_features(data_model_name, project_dict))
     start_dict.update(_parse_denormalized_categorical_features(data_model_name, project_dict))
-    if feature_type in [FeatureType.NUMERIC, FeatureType.ALL]:
+    if feature_type in [enums.FeatureType.NUMERIC, enums.FeatureType.ALL]:
         start_dict.update(_parse_aggregate_features(data_model_name, project_dict))
         start_dict.update(_parse_calculated_features(data_model_name, project_dict))
 
     feature_list = [feature_list] if isinstance(feature_list, str) else feature_list
     folder_list = [folder_list] if isinstance(folder_list, str) else folder_list
 
-    ret_dict = copy.deepcopy(start_dict)
-    for i in start_dict:
+    for i in list(start_dict.keys()):
         if feature_list is not None:
             if i not in feature_list:
-                del ret_dict[i]
+                del start_dict[i]
                 continue
         if folder_list is not None:
-            if all(folder_val not in folder_list for folder_val in ret_dict[i]["folder"]):
-                del ret_dict[i]
+            if all(folder_val not in folder_list for folder_val in start_dict[i]["folder"]):
+                del start_dict[i]
                 continue
-        if feature_type != FeatureType.ALL:
-            if ret_dict[i]["feature_type"] != feature_type.name_val:
-                del ret_dict[i]
+        if feature_type != enums.FeatureType.ALL:
+            if start_dict[i]["feature_type"] != feature_type.name_val:
+                del start_dict[i]
+    return start_dict
+
+
+def _get_draft_hierarchies(
+    project_dict: dict,
+    cube_id: str,
+    folder_list: List[str] = None,
+) -> dict:
+    """Gets the names and metadata for each hierarchy in the draft DataModel.
+
+    Args:
+        project_dict (Dict): the metadata of the project to extract
+        cube_id (str): the id of the data_model of interest
+        folder_list (List[str], optional): the folder to filter the results by
+
+    Returns:
+        Dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
+              while the inner keys break down metadata of the hierarchy.
+    """
+    cube = project_parser.get_cube(project_dict=project_dict, id=cube_id)
+    lookup_dict = {}
+    level_dict = _parse_categorical_features(cube["name"], project_dict)
+    for value in level_dict.values():
+        if value["roleplay_expression"] != "{0}":
+            for hier in value["base_hierarchy"]:
+                if hier not in lookup_dict:
+                    lookup_dict[hier] = set()
+                lookup_dict[hier].add(value["roleplay_expression"])
+    ret_dict = {}
+    for dimension in project_dict.get("dimensions", {}).get("dimension", []) + cube.get(
+        "dimensions", {}
+    ).get("dimension", []):
+        if dimension.get("properties", {}).get("dimension-type", "Other") == "Time":
+            dim_type = "Time"
+        else:
+            dim_type = "Standard"
+        for hierarchy in dimension.get("hierarchy", []):
+            if (
+                folder_list is None
+                or hierarchy.get("properties", {}).get("folder", "") in folder_list
+            ):
+                info = {
+                    "base_name": hierarchy["name"],
+                    "caption": hierarchy.get("properties", {}).get("caption", ""),
+                    "description": hierarchy.get("properties", {}).get("description", ""),
+                    "folder": hierarchy.get("properties", {}).get("folder", ""),
+                    "type": dim_type,
+                }
+                if hierarchy["name"] in lookup_dict:
+                    for roleplay in lookup_dict[hierarchy["name"]]:
+                        rp_info = info.copy()
+                        rp_info["dimension"] = roleplay.replace("{0}", dimension["name"])
+                        rp_info["roleplay_expression"] = roleplay
+                        ret_dict[roleplay.replace("{0}", hierarchy["name"])] = rp_info
+                else:
+                    info["dimension"] = dimension["name"]
+                    info["roleplay_expression"] = "{0}"
+                    ret_dict[hierarchy["name"]] = info
+    return ret_dict
+
+
+def _get_draft_dimensions(
+    project_dict: dict,
+    cube_id: str,
+) -> dict:
+    """Gets the names and metadata for each dimension in the draft DataModel.
+
+    Args:
+        project_dict (Dict): the metadata of the project to extract
+        cube_id (str): the id of the data_model of interest
+
+    Returns:
+        Dict: A dictionary of dictionaries where the dimension names are the keys in the outer dictionary
+              while the inner keys break down metadata of the dimension.
+    """
+    cube = project_parser.get_cube(project_dict=project_dict, id=cube_id)
+    lookup_dict = {}
+    level_dict = _parse_categorical_features(cube["name"], project_dict)
+    for value in level_dict.values():
+        if value["roleplay_expression"] != "{0}":
+            if value["base_dimension"] not in lookup_dict:
+                lookup_dict[value["base_dimension"]] = set()
+            lookup_dict[value["base_dimension"]].add(value["roleplay_expression"])
+    ret_dict = {}
+    for dimension in project_dict.get("dimensions", {}).get("dimension", []) + cube.get(
+        "dimensions", {}
+    ).get("dimension", []):
+        if dimension.get("properties", {}).get("dimension-type", "Other") == "Time":
+            dim_type = "Time"
+        else:
+            dim_type = "Standard"
+        info = {
+            "base_name": dimension["name"],
+            "description": dimension.get("properties", {}).get("description", ""),
+            "type": dim_type,
+        }
+        if dimension["name"] in lookup_dict:
+            for roleplay in lookup_dict[dimension["name"]]:
+                rp_info = info.copy()
+                rp_info["roleplay_expression"] = roleplay
+                ret_dict[roleplay.replace("{0}", dimension["name"])] = rp_info
+        else:
+            info["roleplay_expression"] = "{0}"
+            ret_dict[dimension["name"]] = info
     return ret_dict
 
 
 def _check_joins(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     join_features: List[str],
     join_columns: List[Union[str, List[str]]],
@@ -85,19 +181,19 @@ def _check_joins(
 ):
     """Checks that the join features and columns are valid and either errors or returns join_features, join_columns, and df.
     Args:
-        project_dict (dict): the metadata of the project to validate against
+        project_dict (Dict): the metadata of the project to validate against
         cube_id (str): the id of the cube to validate against
         join_features (List[str]): the list of features to join on
         join_columns (List[str]): the list of columns to join on
         column_set (set): the set of columns in the table or dataframe
         roleplay_features (List[str], optional): the list of roleplay features to join on.
             Defaults to None to be set as a list of '' for each join features.
-        dbconn (SQLConnection, optional): the connection to the database, used for querying columns as defined in atscale
+        dbconn (SQLConnection, optional): the connection to the database, used for querying columns as defined in AtScale
         in case df is passsed and needs value columns to be mapped to query columns. Defaults to None.
         df (pd.DataFrame, optional): the dataframe to validated before writing to db and model. Defaults to None.
-        key_dict (dict, optional): The key dict returned by calling _get_feature_keys for the join_features.
+        key_dict (Dict, optional): The key dict returned by calling _get_feature_keys for the join_features.
             Defaults to None to retrieve it.
-        feature_dict (dict, optional): The feature dict returned by calling _get_draft_features for the join_features.
+        feature_dict (Dict, optional): The feature dict returned by calling _get_draft_features for the join_features.
             Defaults to None to call the method and retrieve it.
         spark_input (bool, optional): if the input df is spark or pandas, defaults to False.
         use_spark (bool, optional): Whether to use spark to query for key columns, defaults to False.
@@ -108,7 +204,7 @@ def _check_joins(
     if join_columns is None:
         join_columns = join_features
     elif len(join_features) != len(join_columns):
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"join_features and join_columns must be equal lengths. join_features is"
             f" length {len(join_features)} while join_columns is length {len(join_columns)}"
         )
@@ -117,7 +213,7 @@ def _check_joins(
     if roleplay_features is None:
         roleplay_features = ["" for feature in join_features]
     elif len(join_features) != len(roleplay_features):
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"join_features and roleplay_features lengths must match. "
             f"join_features is length {len(join_features)} "
             f"while roleplay_features is length {len(roleplay_features)}"
@@ -131,7 +227,7 @@ def _check_joins(
     # also need the set of only base names of levels (not secondary attributes either)
     base_names = {}
     for feat, info in feature_dict.items():
-        if info["feature_type"] == FeatureType.CATEGORICAL.name_val:
+        if info["feature_type"] == enums.FeatureType.CATEGORICAL.name_val:
             if feat != info.get("base_name", feat):  # roleplayed
                 base_names[info["base_name"]] = info
             if not info.get("secondary_attribute", False):
@@ -155,7 +251,7 @@ def _check_joins(
             f"join_features are not levels of a hierarchy: {non_level_features}."
         )
     if err_msg:
-        raise atscale_errors.UserError(err_msg)
+        raise ValueError(err_msg)
 
     # Verify the join_columns (which may be join_features now) are in the dataframe columns.
     key_dict = (
@@ -173,7 +269,7 @@ def _check_joins(
             if col not in column_set:
                 missing_join_columns.append(col)
     if missing_join_columns:
-        raise atscale_errors.UserError(
+        raise atscale_errors.ObjectNotFoundError(
             f"The given join_columns {missing_join_columns} do not exist in the column set {list(column_set)}."
         )
 
@@ -184,13 +280,13 @@ def _check_joins(
         value_col: str = key_dict[join_feature]["value_col"]
         # alert the user to a missed multi-key
         if len(join_column) != len(key_cols):
-            raise atscale_errors.UserError(
+            raise ValueError(
                 f'Relationship for feature: "{join_feature}" '
                 f'requires {len(key_cols)} key{"s" if len(key_cols) > 1 else ""}: {key_cols} '
                 f"but received {len(join_column)}: {join_column}"
             )
         if dbconn is not None and df is not None:
-            # if the column is from an atscale query and the value returned is not the join key
+            # if the column is from an AtScale query and the value returned is not the join key
             # then we assume that the join_column is an alias for the value column when it should be the key column
             if len(key_cols) == 1 and key_cols[0] != value_col and join_column[0] != key_cols[0]:
                 if join_column[0] != value_col and join_column[0] != join_feature:
@@ -251,43 +347,48 @@ def _get_atscale_names(
     database: str = None,
     schema: str = None,
     expected_columns: List[str] = None,
-    include_dtype: bool = False,
-) -> Tuple[Union[Set[str], List[str]], str, str, str]:
+) -> Tuple[List[Tuple[str, str]], str, str, str]:
     """Will error if database and schema are not connected to warehouse_id. Will error if table_name is not viewable
     from the atconn in the given db and schema, if table_name doesn't exist but an alias does (upper or lower), this
     method assumes it is an alias and returns that name. ignores expected_columns that are not in
-    atscale columns but will warn if one is not present but appears fully uppercase or lowercase.
+    AtScale columns but will warn if one is not present but appears fully uppercase or lowercase.
+
     Args:
-        atconn:
-        warehouse_id:
-        table_name:
-        dbconn:
-        database: Need to pass if dbconn is not passed
-        schema: Need to pass if dbconn is not passed
-        expected_columns: If true, warns if atscale columns are of a different casing
-        include_dtype: If true, first returned item will be a list of tuples with name and dtype,
-        otherwise a set of names
+        atconn (_Connection): A valid AtScale connection
+        warehouse_id (str): The warehouse to use for checking the table and columns
+        table_name (str): The table name to search for columns in
+        dbconn (SQLConnection, optional): The dbconn to use. Defaults to None.
+        database (str, optional): the database to look for the table in. When None it will attempt
+            to use get the database from the dbconn. Required if dbconn is None. Defaults to None.
+        schema (str, optional): the database to look for the table in. When None it will attempt
+            to use get the schema from the dbconn. Required if dbconn is None. Defaults to None.
+        expected_columns (List[str], optional): An optional list of columns to check and
+            see if AtScale represents them with a different casing. Defaults to None to not check
+
+    Returns:
+        Tuple[List[Tuple[str,str]], str, str, str]: a 4 item tuple.
+            1: a list of tuples with the column names and datatypes as seen by AtScale
+            2: the table name as seen by AtScale, 3/4: the schema and database used in the search
     """
     if schema is None and database is not None:
-        raise atscale_errors.UserError("Must pass schema if database passed")
+        raise ValueError("Must pass schema if database passed")
     if dbconn is None and database is None and schema is None:
-        raise atscale_errors.UserError(
-            "Must pass dbconn or both database and schema, none were passed"
-        )
+        raise ValueError("Must pass dbconn or both database and schema, none were passed")
     if dbconn is not None and database is None and schema is None:
-        database, schema = db_utils.get_database_and_schema(dbconn=dbconn)
+        database = dbconn._database
+        schema = dbconn._schema
     db_aliases = atconn._get_connected_databases(
         warehouse_id=warehouse_id
     )  # don't convert to aliases
     if database not in db_aliases:
-        raise atscale_errors.UserError(
+        raise atscale_errors.ObjectNotFoundError(
             f"The database '{database}' does not exist in the list of databases "
             f"connected to warehouse id '{warehouse_id}': {db_aliases}"
         )
 
     schema_aliases = atconn._get_connected_schemas(warehouse_id=warehouse_id, database=database)
     if schema not in schema_aliases:
-        raise atscale_errors.UserError(
+        raise atscale_errors.ObjectNotFoundError(
             f"The schema '{schema}' does not exist in the list of schemas"
             f"connected to warehouse_id '{warehouse_id} in database {database}': {schema_aliases}"
         )
@@ -305,8 +406,6 @@ def _get_atscale_names(
         schema=schema,
         expected_columns=expected_columns,
     )
-    if not include_dtype:
-        atscale_columns = {c[0] for c in atscale_columns}
     return atscale_columns, atscale_table_name, schema, database
 
 
@@ -321,7 +420,7 @@ def _prep_join_columns_for_join(
         atscale_columns: The columns as they appear in the atscale dataset.
 
     Returns:
-        The join columns with any aliases replaced with the actual column names.
+        List[List[str]]: The join columns with any aliases replaced with the actual column names.
     """
     if join_columns is None:
         return join_columns
@@ -342,7 +441,7 @@ def _prep_join_columns_for_join(
     return join_columns
 
 
-def _get_agg_type(attribute: dict):
+def _get_agg_type(attribute: Dict):
     if "count-nonnull" in attribute.get("properties", {}).get("type", {}):
         agg_type = "NDC"
     elif "count-distinct" in attribute.get("properties", {}).get("type", {}):
@@ -362,7 +461,10 @@ def _get_agg_type(attribute: dict):
             .get("measure", {})
             .get("default-aggregation", "Aggregate")
         )
-    return Aggs(agg_type).visual_rep
+    if agg_type == "Aggregate":
+        return "Aggregate"
+    else:
+        return enums.Aggs(agg_type).visual_rep
 
 
 def _parse_categorical_features(
@@ -373,40 +475,39 @@ def _parse_categorical_features(
 
     Args:
         data_model_name (str): the name of the data_model of interest
-        project_dict (dict): the metadata of the project to extract
+        project_dict (Dict): the metadata of the project to extract
 
     Returns:
         Dict[Dict]: a dict of dicts of the form 'query_name':{metadata}
     """
     info_dict = {}
 
-    if "attributes" not in project_dict or "keyed-attribute" not in project_dict["attributes"]:
+    attributes = project_dict.get("attributes", {}).get("keyed-attribute", [])
+    if len(attributes) == 0:
         return {}
 
-    for i in project_dict["attributes"]["keyed-attribute"]:
+    for i in attributes:
         info_dict[i["id"]] = i
 
     # deal with metrical secondary attributes
-    if "attribute" in project_dict["attributes"]:
-        for i in project_dict["attributes"]["attribute"]:
-            info_dict[i["id"]] = i
+    for i in project_dict.get("attributes", {}).get("attribute", []):
+        info_dict[i["id"]] = i
 
     roleplay_refs = {}
-    cube = [x for x in project_dict["cubes"]["cube"] if x["name"] == data_model_name][0]
+    cubes = project_dict.get("cubes", {}).get("cube", [])
+    cube = [x for x in cubes if x.get("name", []) == data_model_name][0]
 
-    for dataset in cube["data-sets"]["data-set-ref"]:
-        if "key-ref" in dataset["logical"]:
-            for key in dataset["logical"]["key-ref"]:
-                if key["complete"] == "false":
-                    if "ref-path" in key:
-                        val = (
-                            key["ref-path"]["new-ref"]["ref-naming"],
-                            key["ref-path"]["new-ref"]["ref-id"],
-                        )
-                    else:
-                        val = ("{0}", "")
-                    roleplay_refs.setdefault(key["id"], [])
-                    roleplay_refs[key["id"]].append(val)
+    for dataset in cube.get("data-sets", {}).get("data-set-ref", []):
+        for key in dataset.get("logical", {}).get("key-ref", []):
+            if key["complete"] == "false":
+                if "ref-path" in key:
+                    val = (
+                        key["ref-path"]["new-ref"]["ref-naming"],
+                        key["ref-path"]["new-ref"]["ref-id"],
+                    )
+                else:
+                    val = ("{0}", "")
+                roleplay_refs.setdefault(key["id"], []).append(val)
     roleplay_ids = {}
     ref_ids = {}
     for key_ref in project_dict["attributes"]["keyed-attribute"]:
@@ -418,38 +519,36 @@ def _parse_categorical_features(
     last_run = False
     while not done:
         starting_roleplays = len(roleplay_ids)
-        for dimension in project_dict["dimensions"]["dimension"]:
-            for hierarchy in dimension["hierarchy"]:
-                for level in hierarchy["level"]:
+        for dimension in project_dict.get("dimensions", {}).get("dimension", []):
+            for hierarchy in dimension.get("hierarchy", {}):
+                for level in hierarchy.get("level", {}):
                     if level["primary-attribute"] in roleplay_ids or last_run:
                         base_roleplays = roleplay_ids.get(level["primary-attribute"], [("{0}", "")])
                         if "properties" in level and level["properties"].get("visible", True):
-                            if "keyed-attribute-ref" in level:
-                                for key in level["keyed-attribute-ref"]:
-                                    for roleplay in base_roleplays:
-                                        rp_string = roleplay[0]
-                                        if "ref-path" in key["properties"]:
-                                            val = (
-                                                rp_string.replace(
-                                                    "{0}",
-                                                    key["properties"]["ref-path"]["new-ref"][
-                                                        "ref-naming"
-                                                    ],
-                                                    1,
-                                                ),
-                                                key["properties"]["ref-path"]["new-ref"]["ref-id"],
-                                            )
-                                        else:
-                                            val = (rp_string, "")
-                                        roleplay_ids.setdefault(key["attribute-id"], [])
-                                        roleplay_ids[key["attribute-id"]].append(val)
+                            for key in level.get("keyed-attribute-ref", {}):
+                                for roleplay in base_roleplays:
+                                    rp_string = roleplay[0]
+                                    if "ref-path" in key["properties"]:
+                                        val = (
+                                            rp_string.replace(
+                                                "{0}",
+                                                key["properties"]["ref-path"]["new-ref"][
+                                                    "ref-naming"
+                                                ],
+                                                1,
+                                            ),
+                                            key["properties"]["ref-path"]["new-ref"]["ref-id"],
+                                        )
+                                    else:
+                                        val = (rp_string, "")
+                                    roleplay_ids.setdefault(key["attribute-id"], []).append(val)
                             # added in 'attribute-ref to deal with metrical secondary attributes
-                            if "attribute-ref" in level:
-                                for key in level["attribute-ref"]:
-                                    for roleplay in base_roleplays:
-                                        rp_string = roleplay[0]
-                                        roleplay_ids.setdefault(key["attribute-id"], [])
-                                        roleplay_ids[key["attribute-id"]].append((rp_string, ""))
+                            for key in level.get("attribute-ref", {}):
+                                for roleplay in base_roleplays:
+                                    rp_string = roleplay[0]
+                                    roleplay_ids.setdefault(key["attribute-id"], []).append(
+                                        (rp_string, "")
+                                    )
         if starting_roleplays == len(roleplay_ids):
             last_run = True
         if last_run:
@@ -459,29 +558,28 @@ def _parse_categorical_features(
         ref_ids[key_ref["id"]] = key_ref
 
     # for metrical attributes
-    if "attribute" in project_dict["attributes"]:
-        for key_ref in project_dict["attributes"]["attribute"]:
-            if key_ref.get("key-ref", None) and key_ref["key-ref"] in roleplay_refs:
-                roleplay_ids[key_ref["id"]] = roleplay_refs[key_ref["key-ref"]]
-            # this seems necessary for snowflake dimensions
-            elif key_ref.get("id", None) and key_ref["id"] in roleplay_refs:
-                roleplay_ids[key_ref["id"]] = roleplay_refs[key_ref["id"]]
-            ref = copy.deepcopy(key_ref)
-            ref["level-type"] = _get_agg_type(key_ref)
-            ref["feature-type"] = "Numeric"
-            ref_ids[key_ref["id"]] = ref
+    for key_ref in project_dict.get("attributes", {}).get("attribute", {}):
+        if key_ref.get("key-ref", None) and key_ref["key-ref"] in roleplay_refs:
+            roleplay_ids[key_ref["id"]] = roleplay_refs[key_ref["key-ref"]]
+        # this seems necessary for snowflake dimensions
+        elif key_ref.get("id", None) and key_ref["id"] in roleplay_refs:
+            roleplay_ids[key_ref["id"]] = roleplay_refs[key_ref["id"]]
+        ref = copy.deepcopy(key_ref)
+        ref["level-type"] = _get_agg_type(key_ref)
+        ref["feature-type"] = "Numeric"
+        ref_ids[key_ref["id"]] = ref
 
     dim_to_id_dict = {}
 
-    for dimension in project_dict["dimensions"]["dimension"]:
-        for hierarchy in dimension["hierarchy"]:
+    for dimension in project_dict.get("dimensions", {}).get("dimension", {}):
+        for hierarchy in dimension.get("hierarchy", {}):
             if "folder" in hierarchy["properties"]:
                 this_folder = hierarchy["properties"]["folder"]
             else:
                 this_folder = ""
             roleplays = set()
             # reversed so that we only apply role playing above the leaf
-            for level in reversed(hierarchy["level"]):
+            for level in reversed(hierarchy.get("level", {})):
                 queryable_level = True
                 if level["primary-attribute"] in roleplay_ids:
                     roleplays.add(level["primary-attribute"])
@@ -580,53 +678,52 @@ def _parse_categorical_features(
                                     roleplaying_dict["base_dimension"] = dimension["name"]
                                     roleplaying_dict["secondary_attribute"] = True
 
-                                    dim_to_id_dict[
-                                        roleplaying_dict["roleplayed_name"]
-                                    ] = roleplaying_dict
+                                    dim_to_id_dict[roleplaying_dict["roleplayed_name"]] = (
+                                        roleplaying_dict
+                                    )
 
                     # these are the metrical secondary attributes
-                    if "attribute-ref" in level:
-                        for attr in level["attribute-ref"]:
-                            # if it has a reference ID then it should be handled elsewhere as this is a join
-                            ref_id_check = attr.get("ref-id", False)
-                            if not ref_id_check:
-                                level_roleplays = roleplay_ids.get(roleplay, [])
-                                if roleplay not in roleplay_ids:
-                                    level_roleplays.append(("{0}", ""))
-                                    queryable_level = False
-                                for role, ref_id in level_roleplays:
-                                    roleplaying_dict = {}
-                                    roleplaying_dict["level_type"] = ref_ids[attr["attribute-id"]][
-                                        "level-type"
-                                    ]
-                                    roleplaying_dict["feature_type"] = ref_ids[
-                                        attr["attribute-id"]
-                                    ]["feature-type"]
-                                    roleplaying_dict["id"] = ref_ids[attr["attribute-id"]]["id"]
-                                    roleplaying_dict["queryable"] = queryable_level
-                                    roleplaying_dict["roleplay_expression"] = role
-                                    roleplaying_dict["roleplay_ref_id"] = ref_id
-                                    roleplaying_dict["roleplayed_name"] = role.replace(
-                                        "{0}", ref_ids[attr["attribute-id"]]["name"]
-                                    )
-                                    roleplaying_dict["base_name"] = ref_ids[attr["attribute-id"]][
-                                        "name"
-                                    ]
+                    for attr in level.get("attribute-ref", {}):
+                        # if it has a reference ID then it should be handled elsewhere as this is a join
+                        ref_id_check = attr.get("ref-id", False)
+                        if not ref_id_check:
+                            level_roleplays = roleplay_ids.get(roleplay, [])
+                            if roleplay not in roleplay_ids:
+                                level_roleplays.append(("{0}", ""))
+                                queryable_level = False
+                            for role, ref_id in level_roleplays:
+                                roleplaying_dict = {}
+                                roleplaying_dict["level_type"] = ref_ids[attr["attribute-id"]][
+                                    "level-type"
+                                ]
+                                roleplaying_dict["feature_type"] = ref_ids[attr["attribute-id"]][
+                                    "feature-type"
+                                ]
+                                roleplaying_dict["id"] = ref_ids[attr["attribute-id"]]["id"]
+                                roleplaying_dict["queryable"] = queryable_level
+                                roleplaying_dict["roleplay_expression"] = role
+                                roleplaying_dict["roleplay_ref_id"] = ref_id
+                                roleplaying_dict["roleplayed_name"] = role.replace(
+                                    "{0}", ref_ids[attr["attribute-id"]]["name"]
+                                )
+                                roleplaying_dict["base_name"] = ref_ids[attr["attribute-id"]][
+                                    "name"
+                                ]
 
-                                    if "folder" in ref_ids[attr["attribute-id"]]["properties"]:
-                                        roleplaying_dict["folder"] = [
-                                            ref_ids[attr["attribute-id"]]["properties"]["folder"]
-                                        ]
-                                    else:
-                                        roleplaying_dict["folder"] = [this_folder]
-                                    roleplaying_dict["roleplayed_caption"] = role.replace(
-                                        "{0}",
-                                        info_dict[roleplaying_dict["id"]]["properties"]["caption"],
-                                    )
-                                    roleplaying_dict["secondary_attribute"] = True
-                                    dim_to_id_dict[
-                                        roleplaying_dict["roleplayed_name"]
-                                    ] = roleplaying_dict
+                                if "folder" in ref_ids[attr["attribute-id"]]["properties"]:
+                                    roleplaying_dict["folder"] = [
+                                        ref_ids[attr["attribute-id"]]["properties"]["folder"]
+                                    ]
+                                else:
+                                    roleplaying_dict["folder"] = [this_folder]
+                                roleplaying_dict["roleplayed_caption"] = role.replace(
+                                    "{0}",
+                                    info_dict[roleplaying_dict["id"]]["properties"]["caption"],
+                                )
+                                roleplaying_dict["secondary_attribute"] = True
+                                dim_to_id_dict[roleplaying_dict["roleplayed_name"]] = (
+                                    roleplaying_dict
+                                )
 
     return_dict = {}
     for i in dim_to_id_dict:
@@ -671,7 +768,7 @@ def _parse_aggregate_features(
 
     Args:
         data_model_name (str): the name of the data_model of interest
-        project_dict (dict): the metadata of the project to extract
+        project_dict (Dict): the metadata of the project to extract
 
     Returns:
         Dict[Dict]: a dict of dicts of the form 'query_name':{metadata}
@@ -691,7 +788,7 @@ def _parse_aggregate_features(
         return_dict[i["name"]]["caption"] = i.get("properties", {}).get("caption", "")
         return_dict[i["name"]]["atscale_type"] = _get_agg_type(i)
         # commented out until the dmv bug is fixed and we expose it in use_published
-        # agg_type = Aggs.from_properties(i.get("properties", {})).visual_rep
+        # agg_type = enums.Aggs.from_properties(i.get("properties", {})).visual_rep
         # return_dict[i["name"]]["aggregation_type"] = agg_type
         return_dict[i["name"]]["description"] = i.get("properties", {}).get("description", "")
         return_dict[i["name"]]["folder"] = [i.get("properties", {}).get("folder", "")]
@@ -709,7 +806,7 @@ def _parse_calculated_features(
 
     Args:
         data_model_name (str): the name of the data_model of interest
-        project_dict (dict): the metadata of the project to extract
+        project_dict (Dict): the metadata of the project to extract
 
     Returns:
         Dict[Dict]: a dict of dicts of the form 'query_name':{metadata}
@@ -741,7 +838,7 @@ def _parse_denormalized_categorical_features(
 
     Args:
         data_model_name (str): the name of the data_model of interest
-        project_dict (dict): the metadata of the project to extract
+        project_dict (Dict): the metadata of the project to extract
 
     Returns:
         Dict[Dict]: a dict of dicts of the form 'query_name':{metadata}
@@ -831,19 +928,19 @@ def _get_published_features(
     data_model,
     feature_list: List[str] = None,
     folder_list: List[str] = None,
-    feature_type: FeatureType = FeatureType.ALL,
-) -> dict:
+    feature_type: enums.FeatureType = enums.FeatureType.ALL,
+) -> Dict:
     """Gets the feature names and metadata for each feature in the published DataModel.
 
     Args:
-        data_model (DataModel): The published atscale data model to get the features of via dmv
+        data_model (DataModel): The published AtScale data model to get the features of via dmv
         feature_list (List[str], optional): A list of features to return. Defaults to None to return all.
         folder_list (List[str], optional): A list of folders to filter by. Defaults to None to ignore folder.
-        feature_type (FeatureType, optional): The type of features to filter by. Options
-            include FeatureType.ALL, FeatureType.CATEGORICAL, or FeatureType.NUMERIC. Defaults to ALL.
+        feature_type (enums.FeatureType, optional): The type of features to filter by. Options
+            include enums.FeatureType.ALL, enums.FeatureType.CATEGORICAL, or enums.FeatureType.NUMERIC. Defaults to ALL.
 
     Returns:
-        dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
+        Dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
                 while the inner keys are the following:
                 'atscale_type'(value is a level-type, 'Aggregate', or 'Calculated'),
                 'description', 'expression', caption, 'folder', 'data_type', and 'feature_type'(value is Numeric or Categorical).
@@ -853,33 +950,33 @@ def _get_published_features(
     hier_filter_by = {}
     if feature_list:
         feature_list = [feature_list] if isinstance(feature_list, str) else feature_list
-        level_filter_by[Level.name] = feature_list
-        measure_filter_by[Measure.name] = feature_list
+        level_filter_by[enums.Level.name] = feature_list
+        measure_filter_by[enums.Measure.name] = feature_list
     if folder_list:
         folder_list = [folder_list] if isinstance(folder_list, str) else folder_list
-        hier_filter_by[Hierarchy.folder] = folder_list
-        measure_filter_by[Measure.folder] = folder_list
+        hier_filter_by[enums.Hierarchy.folder] = folder_list
+        measure_filter_by[enums.Measure.folder] = folder_list
 
     feature_dict = {}
 
     catalog_licensed = data_model.project._atconn._validate_license("data_catalog_api")
 
-    if feature_type is FeatureType.ALL or feature_type is FeatureType.CATEGORICAL:
-        hier_dict = get_dmv_data(
-            model=data_model, fields=[Hierarchy.folder], filter_by=hier_filter_by
+    if feature_type is enums.FeatureType.ALL or feature_type is enums.FeatureType.CATEGORICAL:
+        hier_dict = dmv_utils.get_dmv_data(
+            model=data_model, fields=[enums.Hierarchy.folder], filter_by=hier_filter_by
         )
-        level_filter_by[Level.hierarchy] = list(hier_dict.keys())
+        level_filter_by[enums.Level.hierarchy] = list(hier_dict.keys())
         query_fields = [
-            Level.type,
-            Level.description,
-            Level.hierarchy,
-            Level.dimension,
-            Level.caption,
-            Level.data_type,
+            enums.Level.type,
+            enums.Level.description,
+            enums.Level.hierarchy,
+            enums.Level.dimension,
+            enums.Level.caption,
+            enums.Level.data_type,
         ]
         if catalog_licensed:
-            query_fields.append(Level.secondary_attribute)
-        dimension_dict = get_dmv_data(
+            query_fields.append(enums.Level.secondary_attribute)
+        dimension_dict = dmv_utils.get_dmv_data(
             model=data_model,
             fields=query_fields,
             filter_by=level_filter_by,
@@ -887,54 +984,58 @@ def _get_published_features(
         for name, info in dimension_dict.items():
             # if a level was duplicated we might have multiple hierarchies which could mean multiple folders
             folder = []
-            if type(info[Level.hierarchy.name]) is list:
-                for hierarchy_name in info[Level.hierarchy.name]:
+            if type(info[enums.Level.hierarchy.name]) is list:
+                for hierarchy_name in info[enums.Level.hierarchy.name]:
                     if hier_dict.get(hierarchy_name):
-                        folder.append(hier_dict[hierarchy_name][Hierarchy.folder.name])
+                        folder.append(hier_dict[hierarchy_name][enums.Hierarchy.folder.name])
             else:
-                folder.append(hier_dict[info[Level.hierarchy.name]][Hierarchy.folder.name])
-                info[Level.hierarchy.name] = [info[Level.hierarchy.name]]
+                folder.append(
+                    hier_dict[info[enums.Level.hierarchy.name]][enums.Hierarchy.folder.name]
+                )
+                info[enums.Level.hierarchy.name] = [info[enums.Level.hierarchy.name]]
 
             feature_dict[name] = {
-                "caption": info[Level.caption.name],
-                "atscale_type": info[Level.type.name],
-                "data_type": info[Level.data_type.name],
-                "description": info[Level.description.name],
-                "hierarchy": info[Level.hierarchy.name],
-                "dimension": info[Level.dimension.name],
+                "caption": info[enums.Level.caption.name],
+                "atscale_type": info[enums.Level.type.name],
+                "data_type": info[enums.Level.data_type.name],
+                "description": info[enums.Level.description.name],
+                "hierarchy": info[enums.Level.hierarchy.name],
+                "dimension": info[enums.Level.dimension.name],
                 "folder": folder,
                 "feature_type": "Categorical",
             }
             if catalog_licensed:
-                feature_dict[name]["secondary_attribute"] = info[Level.secondary_attribute.name]
+                feature_dict[name]["secondary_attribute"] = info[
+                    enums.Level.secondary_attribute.name
+                ]
             else:
                 feature_dict[name]["secondary_attribute"] = False
-    if feature_type is FeatureType.ALL or feature_type is FeatureType.NUMERIC:
+    if feature_type is enums.FeatureType.ALL or feature_type is enums.FeatureType.NUMERIC:
         query_fields = [
-            Measure.type,
-            Measure.description,
-            Measure.folder,
-            Measure.caption,
-            Measure.data_type,
+            enums.Measure.type,
+            enums.Measure.description,
+            enums.Measure.folder,
+            enums.Measure.caption,
+            enums.Measure.data_type,
         ]
         if catalog_licensed:
-            query_fields.append(Measure.expression)
-        measure_dict = get_dmv_data(
+            query_fields.append(enums.Measure.expression)
+        measure_dict = dmv_utils.get_dmv_data(
             model=data_model, fields=query_fields, filter_by=measure_filter_by
         )
         for name, info in measure_dict.items():
-            agg_type = info[Measure.type.name]
+            agg_type = info[enums.Measure.type.name]
             feature_dict[name] = {
-                "caption": info[Measure.caption.name],
+                "caption": info[enums.Measure.caption.name],
                 "atscale_type": agg_type if agg_type != "Calculated" else "Calculated",
                 # "aggregation_type": agg_type,
-                "data_type": info[Measure.data_type.name],
-                "description": info[Measure.description.name],
-                "folder": [info[Measure.folder.name]],
+                "data_type": info[enums.Measure.data_type.name],
+                "description": info[enums.Measure.description.name],
+                "folder": [info[enums.Measure.folder.name]],
                 "feature_type": "Numeric",
             }
             if catalog_licensed:
-                feature_dict[name]["expression"] = info[Measure.expression.name]
+                feature_dict[name]["expression"] = info[enums.Measure.expression.name]
             else:
                 feature_dict[name]["expression"] = ""
 
@@ -967,31 +1068,36 @@ def _create_perspective(
         str: The id of the created perspective
     """
     project_dict = data_model.project._get_dict()
-    project_dict.setdefault("perspectives", {})
-    project_dict["perspectives"].setdefault("perspective", [])
+    project_dict.setdefault("perspectives", {}).setdefault("perspective", [])
     if update:
         perspective_ids = [
             x["id"] for x in project_dict["perspectives"]["perspective"] if x["name"] == name
         ]
         if len(perspective_ids) == 0:
-            raise atscale_errors.UserError(f"No perspective named: '{name}' exists")
+            raise atscale_errors.ObjectNotFoundError(f"No perspective named: '{name}' exists")
         perspective_id = perspective_ids[0]
     else:
         perspective_names = [x["name"] for x in project_dict["perspectives"]["perspective"]]
         if name in perspective_names:
-            raise ValueError(f"A perspective named: '{name}' already exists")
+            raise atscale_errors.CollisionError(f"A perspective named: '{name}' already exists")
         perspective_id = str(uuid.uuid4())
 
-    numeric_features_info = _get_draft_features(
-        project_dict, data_model_name=data_model.name, feature_type=FeatureType.NUMERIC
+    all_features_info = _get_draft_features(project_dict, data_model_name=data_model.name)
+    # Check to see that features passed are numeric
+    numeric_features_info = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
     )
-    categorical_feature_info = _get_draft_features(
-        project_dict, data_model_name=data_model.name, feature_type=FeatureType.CATEGORICAL
+    # Check to see that features passed are numeric
+    categorical_features_info = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.CATEGORICAL.name_val],
     )
+
     hierarchy_info = data_model.get_hierarchies(secondary_attribute=False)
     hierarchy_roleplays = {}
     dimension_roleplays = {}
-    for info in categorical_feature_info.values():
+    for info in categorical_features_info.values():
         for hier, base_hier in zip(
             info.get("hierarchy"), info.get("base_hierarchy", info.get("hierarchy"))
         ):
@@ -1009,19 +1115,19 @@ def _create_perspective(
         model_utils._check_features(
             numeric_features,
             numeric_features_info,
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
         )
     if categorical_features:
         model_utils._check_features(
             categorical_features,
-            categorical_feature_info,
-            errmsg=CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
+            categorical_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
         )
     if hierarchies:
         model_utils._check_features(
             features=hierarchies,
             check_list=hierarchy_info,
-            errmsg=CheckFeaturesErrMsg.HIERARCHY.get_errmsg(is_published=False),
+            errmsg=enums.CheckFeaturesErrMsg.HIERARCHY.get_errmsg(is_published=False),
         )
 
     cube = project_parser.get_cube(project_dict=project_dict, id=data_model.cube_id)
@@ -1092,7 +1198,7 @@ def _create_perspective(
                     hidden_dimensions.append(dimension)
                     break
             else:
-                raise atscale_errors.UserError(f"No dimension named: '{dimension}' found")
+                raise atscale_errors.ObjectNotFoundError(f"No dimension named: '{dimension}' found")
     # second are hierarchies
     if hierarchies:
         for hierarchy in hierarchies:
@@ -1126,8 +1232,9 @@ def _create_perspective(
                                         ):
                                             match = True
                                     if match:
-                                        dim.setdefault("flat-hierarchy-ref", [])
-                                        dim["flat-hierarchy-ref"].append(hierarchy_dict)
+                                        dim.setdefault("flat-hierarchy-ref", []).append(
+                                            hierarchy_dict
+                                        )
                                         break
                             else:
                                 dimension_dict = {
@@ -1150,8 +1257,8 @@ def _create_perspective(
         for categorical_feature in categorical_features:
             # we need the hierarchy info for the attribute as well as whether it is a secondary attribute
             # if the level is in multiple hierarchies it doesn't matter which we use so we can just grab the first one
-            hierarchies = categorical_feature_info[categorical_feature]["hierarchy"]
-            dim = categorical_feature_info[categorical_feature]["dimension"]
+            hierarchies = categorical_features_info[categorical_feature]["hierarchy"]
+            dim = categorical_features_info[categorical_feature]["dimension"]
             secondary_attribute = hierarchy_info.get(hierarchies[0], {}).get(
                 "secondary_attribute", True
             )
@@ -1173,7 +1280,7 @@ def _create_perspective(
                             for attribute in project_dict.get("attributes", {}).get(
                                 "keyed-attribute", []
                             ) + cube.get("attributes", {}).get("keyed-attribute", []):
-                                if attribute.get("name") == categorical_feature_info[
+                                if attribute.get("name") == categorical_features_info[
                                     categorical_feature
                                 ].get("base_name", categorical_feature):
                                     # if it is a secondary attribute it goes in the same section as the measures for some reason
@@ -1183,22 +1290,19 @@ def _create_perspective(
                                             "properties": {"visible": False},
                                             "ref-path": {},
                                         }
-                                        if categorical_feature != categorical_feature_info[
+                                        if categorical_feature != categorical_features_info[
                                             categorical_feature
                                         ].get("base_name", categorical_feature):
                                             attribute_dict["ref-path"]["ref"] = [
                                                 {
-                                                    "id": categorical_feature_info[
+                                                    "id": categorical_features_info[
                                                         categorical_feature
                                                     ]["roleplay_ref_id"]
                                                 }
                                             ]
                                         perspective_dict["flat-attributes"].setdefault(
                                             "flat-attribute-ref", []
-                                        )
-                                        perspective_dict["flat-attributes"][
-                                            "flat-attribute-ref"
-                                        ].append(attribute_dict)
+                                        ).append(attribute_dict)
 
                                         break
                                     level_dict = {
@@ -1217,7 +1321,7 @@ def _create_perspective(
                                             if dim.get("ref-path", {}).get("ref", []):
                                                 if dim.get("ref-path", {}).get("ref", [])[0].get(
                                                     "id", ""
-                                                ) == categorical_feature_info[
+                                                ) == categorical_features_info[
                                                     categorical_feature
                                                 ].get(
                                                     "roleplay_ref_id", ""
@@ -1225,23 +1329,25 @@ def _create_perspective(
                                                     match = True
                                             # if no ref path the dim already in the perspective isn't roleplayed so check if the same is true for the feature
                                             else:
-                                                if categorical_feature == categorical_feature_info[
+                                                if categorical_feature == categorical_features_info[
                                                     categorical_feature
                                                 ].get("base_name", categorical_feature):
                                                     match = True
                                         if match:
                                             for h in dim.get("flat-hierarchy-ref", []):
                                                 if h.get("id") == hier.get("id"):
-                                                    h.setdefault("flat-level-ref", [])
-                                                    h["flat-level-ref"].append(level_dict)
+                                                    h.setdefault("flat-level-ref", []).append(
+                                                        level_dict
+                                                    )
                                                     break
                                             else:
                                                 hierarchy_dict = {
                                                     "id": hier.get("id"),
                                                     "properties": {"visible": True},
                                                 }
-                                                dim.setdefault("flat-hierarchy-ref", [])
-                                                dim["flat-hierarchy-ref"].append(hierarchy_dict)
+                                                dim.setdefault("flat-hierarchy-ref", []).append(
+                                                    hierarchy_dict
+                                                )
                                             break
                                     else:
                                         dimension_dict = {
@@ -1249,13 +1355,13 @@ def _create_perspective(
                                             "flat-hierarchy-ref": [hierarchy_dict],
                                             "properties": {"visible": True},
                                         }
-                                        if categorical_feature != categorical_feature_info[
+                                        if categorical_feature != categorical_features_info[
                                             categorical_feature
                                         ].get("base_name", categorical_feature):
                                             dimension_dict["ref-path"] = {
                                                 "ref": [
                                                     {
-                                                        "id": categorical_feature_info[
+                                                        "id": categorical_features_info[
                                                             categorical_feature
                                                         ]["roleplay_ref_id"]
                                                     }
@@ -1277,3 +1383,88 @@ def _create_perspective(
         project_dict.get("perspectives", {}).get("perspective", []).append(perspective_dict)
     data_model.project._update_project(project_dict, publish)
     return perspective_id
+
+
+def _create_user_defined_aggregate(
+    data_model,
+    name: str,
+    categorical_features: List[str] = None,
+    numeric_features: List[str] = None,
+    publish: bool = True,
+) -> str:
+    """Creates a user defined aggregate containing the given categorical and numeric features. Calculated features cannot be added.
+
+    Args:
+        data_model (DataModel): The data model to work off of
+        name (str): The name of the aggregate.
+        categorical_features (List[str], optional): Categorical features to add. Defaults to None.
+        numeric_features (List[str], optional): Numeric features to add. Defaults to None.
+        publish (bool, optional): Whether to publish the updated project. Defaults to True.
+
+    Returns:
+        str: The id of the created aggregate
+    """
+    project_dict = data_model.project._get_dict()
+    cube_dict = project_parser.get_cube(project_dict, data_model.cube_id)
+    cube_dict.setdefault("aggregates", {}).setdefault("aggregate", [])
+
+    aggregate_id = str(uuid.uuid4())
+
+    all_features_info = _get_draft_features(project_dict, data_model_name=data_model.name)
+    numeric_features_info = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
+    )
+    categorical_features_info = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.CATEGORICAL.name_val],
+    )
+
+    cube = project_parser.get_cube(project_dict=project_dict, id=data_model.cube_id)
+    # create the base dict for the agg that we will fill in
+    aggregate_dict = {
+        "id": aggregate_id,
+        "name": name,
+        "properties": {"name": name},
+        "attributes": {"attribute-ref": []},
+    }
+    if numeric_features:
+        for feature in numeric_features:
+            # need to handle possible roleplaying because of metrical attributes
+            base_feature_name = numeric_features_info[feature].get("base_name", feature)
+            measure_id = [
+                x["id"]
+                for x in project_dict.get("attributes", {}).get("attribute", [])
+                + cube.get("attributes", {}).get("attribute", [])
+                if x["name"] == base_feature_name
+            ][0]
+            measure_dict = {
+                "id": measure_id,
+            }
+            if base_feature_name != feature:
+                measure_dict["ref-path"] = {
+                    "ref": [{"id": numeric_features_info[feature].get("roleplay_ref_id", "")}]
+                }
+            aggregate_dict["attributes"]["attribute-ref"].append(measure_dict)
+
+    if categorical_features:
+        for feature in categorical_features:
+            base_feature_name = categorical_features_info[feature].get("base_name", feature)
+            attribute_id = [
+                x["id"]
+                for x in project_dict.get("attributes", {}).get("keyed-attribute", [])
+                + cube.get("attributes", {}).get("keyed-attribute", [])
+                if x["name"] == base_feature_name
+            ][0]
+            attribute_dict = {
+                "id": attribute_id,
+                "ref-path": {},
+            }
+            if feature != base_feature_name:
+                attribute_dict["ref-path"]["ref"] = [
+                    {"id": categorical_features_info[feature]["roleplay_ref_id"]}
+                ]
+            aggregate_dict["attributes"]["attribute-ref"].append(attribute_dict)
+    cube_dict["aggregates"]["aggregate"].append(aggregate_dict)
+    data_model.project._update_project(project_dict, publish)
+    return aggregate_id

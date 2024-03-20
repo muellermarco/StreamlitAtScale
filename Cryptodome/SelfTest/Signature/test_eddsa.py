@@ -30,12 +30,12 @@
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.PublicKey import ECC
-from Cryptodome.Signature import eddsa
-from Cryptodome.Hash import SHA512, SHAKE256
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors_wycheproof
-from Cryptodome.Util.number import bytes_to_long
+from Crypto.PublicKey import ECC
+from Crypto.Signature import eddsa
+from Crypto.Hash import SHA512, SHAKE256
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors_wycheproof
+from Crypto.Util.number import bytes_to_long
 
 rfc8032_tv_str = (
     # 7.1 Ed25519

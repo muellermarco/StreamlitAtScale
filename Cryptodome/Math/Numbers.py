@@ -31,12 +31,12 @@
 __all__ = ["Integer"]
 
 try:
-    from Cryptodome.Math._IntegerGMP import IntegerGMP as Integer
-    from Cryptodome.Math._IntegerGMP import implementation as _implementation
+    from Crypto.Math._IntegerGMP import IntegerGMP as Integer
+    from Crypto.Math._IntegerGMP import implementation as _implementation
 except (ImportError, OSError, AttributeError):
     try:
-        from Cryptodome.Math._IntegerCustom import IntegerCustom as Integer
-        from Cryptodome.Math._IntegerCustom import implementation as _implementation
+        from Crypto.Math._IntegerCustom import IntegerCustom as Integer
+        from Crypto.Math._IntegerCustom import implementation as _implementation
     except (ImportError, OSError):
-        from Cryptodome.Math._IntegerNative import IntegerNative as Integer
+        from Crypto.Math._IntegerNative import IntegerNative as Integer
         _implementation = {}

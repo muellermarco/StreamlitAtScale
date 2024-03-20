@@ -1,9 +1,9 @@
-import inspect
 import json
 import logging
 from typing import List, Dict, Tuple, Union
-
+from requests import Session
 from pandas import DataFrame
+from inspect import getfullargspec
 
 from atscale.base import config
 from atscale.connection.connection import _Connection
@@ -13,10 +13,8 @@ from atscale.data_model import data_model_helpers as dmh
 from atscale.errors import atscale_errors
 from atscale.parsers import project_parser
 from atscale.project.project import Project
-from atscale.utils import db_utils, input_utils, model_utils, project_utils, validation_utils
-from atscale.base.enums import RequestType, Aggs
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+from atscale.utils import input_utils, model_utils, project_utils, validation_utils
+from atscale.base import enums
 
 logger = logging.getLogger(__name__)
 
@@ -46,23 +44,20 @@ class Client:
 
         Args:
             config_path (str, optional): path to a configuration file in .INI format with values for the other parameters. Defaults to None.
-            server (str, optional): the atscale server instance. Defaults to None.
+            server (str, optional): the AtScale server instance. Defaults to None.
             username (str, optional): username. Defaults to None.
-            organization (str, optional): the atscale organization id. Defaults to None.
+            organization (str, optional): the AtScale organization id. Defaults to None.
             password (str, optional): password. Defaults to None.
-            design_center_server_port (str, optional): port for atscale design center. Defaults to '10500'.
+            design_center_server_port (str, optional): port for AtScale design center. Defaults to '10500'.
             jdbc_driver_class (str, optional): The class of the hive jdbc driver to use. Defaults to com.cloudera.hive.jdbc.HS2Driver.
             jdbc_driver_path (str, optional): The path to the hive jdbc driver to use. Defaults to '' which will not allow querying via jdbc
             verify (str|bool, optional): Whether to verify ssl certs. Can also be the path to the cert to use. Defaults to True.
-
-        Raises:
-            ValueError: an error if insufficient information provided to establish a connection.
 
         Returns:
             Client: an instance of this class
         """
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         # Config will load default config files config.ini, ~/.atscale/config and ~/.atscale/credentials on first call to constructor.
         # It's a singleton, so subsequent calls to it's constructor will simply obtain a reference to the existing instance.
@@ -105,6 +100,10 @@ class Client:
             raise ValueError(f"Value for server cannot be null.")
         # otherwise we'll go ahead and make the connection object
         self._atconn = _Connection(s, u, p, o, d, dc, dp, v)
+
+    @property
+    def session(self) -> Session:
+        return self._atconn.session
 
     def get_version(self) -> str:
         """A getter function for the current version of the library
@@ -157,7 +156,7 @@ class Client:
             Project: An empty project
         """
         inspection = getfullargspec(self.create_empty_project)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._atconn._check_connected()
 
@@ -165,7 +164,7 @@ class Client:
         if len(existing_projects) > 0:
             for x in existing_projects:
                 if x["draft_name"] == project_name:
-                    raise ValueError(
+                    raise atscale_errors.CollisionError(
                         f"Project named {project_name} already exists. Please try a new name."
                     )
 
@@ -174,7 +173,7 @@ class Client:
         p = {"name": project_name}
         p = json.dumps(p)
         # this call will handle or raise any errors
-        response = self._atconn._submit_request(request_type=RequestType.POST, url=u, data=p)
+        response = self._atconn._submit_request(request_type=enums.RequestType.POST, url=u, data=p)
         project_dict = json.loads(response.content)["response"]
         # now we'll use the values to construct a python Project class
         project_id = project_dict.get("id")
@@ -200,16 +199,17 @@ class Client:
             draft_project_id (str, optional): An draft project id, will result in a prompt
                 to select a published project if one exists. If None, asks user to select from list of draft
                 projects. Defaults to None.
-            published_project_id (str, optional): The published project id to use if multiple exist for the given draft
+            published_project_id (str, optional): The published project id to use if multiple exist for the given draft.
+                If None, user will be prompted to select a published project if one exists. Defaults to None.
             name_contains (str, optional): A string to use for string comparison to filter the found project names.
-                Defaults to None.
+                If None, no filter will be applied. Defaults to None.
             include_soft_publish (bool, optional): Whether to include soft published projects. Defaults to False.
 
         Returns:
             Project: The desired project
         """
         inspection = getfullargspec(self.select_project)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._atconn._check_connected()
 
@@ -246,7 +246,7 @@ class Client:
         table_name: str,
         dataframe: DataFrame = None,
         generate_date_table: bool = True,
-        default_aggregation_type: Aggs = Aggs.SUM,
+        default_aggregation_type: enums.Aggs = enums.Aggs.SUM,
         publish: bool = True,
     ) -> Project:
         """Auto-generates a project and semantic layer based on column types and values.
@@ -255,7 +255,7 @@ class Client:
 
         Args:
             dbconn (SQLConnection): the database to store our new table
-            warehouse_id (str): the name of the database connection in atscale
+            warehouse_id (str): the name of the database connection in AtScale
             project_name (str): name of the new project to create
             table_name (str): name of the table in the source database
             dataframe (DataFrame, optional): the pandas dataframe to build our semantic model from. Defaults to none to use an existing table
@@ -267,12 +267,12 @@ class Client:
             Project: the newly created Project object
         """
         inspection = getfullargspec(self.autogen_semantic_model)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._atconn._check_connected()
 
         if project_name in [project["draft_name"] for project in self.get_projects()]:
-            raise ValueError(
+            raise atscale_errors.CollisionError(
                 f"A project named {project_name} already exists, please try a new name."
             )
         if dataframe is not None:
@@ -284,22 +284,21 @@ class Client:
             atconn=self._atconn,
             warehouse_id=warehouse_id,
             dbconn=dbconn,
-            table_name=table_name,  # return this table_name but how atscale sees it
+            table_name=table_name,  # return this table_name but how AtScale sees it
             expected_columns=expected_columns,
-            include_dtype=True,
         )
         # create a new, empty project
         project = self.create_empty_project(project_name)
         project_dict = project._get_dict()
         # create the data set and add it to the new, empty
         dataset, dataset_id = project_utils.create_dataset(
+            project_dict,
             warehouse_id=warehouse_id,
             database=database,
             schema=schema,
             table_name=atscale_table_name,
             table_columns=columns,
         )
-        project_utils.add_dataset(project_dict, dataset)
         # Grab the single, default data_model from the project and add a data-set-ref to it which references the dataset we just added to the project.
         model_dict = project_parser.get_cubes(project_dict)[0]
         model_utils._add_data_set_ref(model_dict, dataset_id)
@@ -316,7 +315,7 @@ class Client:
             default_aggregation_type=default_aggregation_type,
         )
         # finally update the project using projet_dict after all the mutations from above
-        project._update_project(project_json=project_dict, publish=publish)
+        project._update_project(project_dict=project_dict, publish=publish)
         return project
 
     def get_organizations(self) -> List[Dict[str, str]]:
@@ -329,6 +328,7 @@ class Client:
         self._atconn._check_connected()
 
         orgList = self._atconn._get_orgs_for_all_users()
+        orgList = sorted(orgList, key=lambda d: d["name"].upper())
 
         for i, dct in enumerate(orgList):
             print(f"Index:{i} ID: {dct['id']}: Name: {dct['name']}")
@@ -339,8 +339,7 @@ class Client:
         self,
         include_soft_publish: bool = False,
     ) -> List[Dict[str, str]]:
-        """Prints all Projects that are visible for the associated organization. Returns a list of dicts
-            for each of the listed Projects.
+        """Returns a list of dicts for each of the listed Projects.
 
         Args:
             include_soft_publish (bool, optional): Whether to include soft published projects. Defaults to False.
@@ -349,7 +348,7 @@ class Client:
             List[Dict[str,str]]: List of 3 item dicts where keys are 'draft_id', 'draft_name', 'published_projects' of available Projects.
         """
         inspection = getfullargspec(self.get_projects)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
         self._atconn._check_connected(),
 
         projectsList = self._atconn._get_projects()
@@ -377,11 +376,12 @@ class Client:
                     published_dict["published_id"] = pub_dct["id"]
                     published_dict["published_name"] = pub_dct["name"]
                     published_list.append(published_dict)
+                published_list = sorted(published_list, key=lambda d: d["published_name"].upper())
                 ret_dict["published_projects"] = published_list
 
             ret_list.append(ret_dict)
 
-        return ret_list
+        return sorted(ret_list, key=lambda d: d["draft_name"].upper())
 
     def get_published_projects(
         self,
@@ -400,7 +400,7 @@ class Client:
             List[Dict[str,str]]: List of 'id':'name' pairs of available published Projects.
         """
         inspection = getfullargspec(self.get_published_projects)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._atconn._check_connected()
 
@@ -418,7 +418,7 @@ class Client:
             ret_dict["name"] = dct["name"]
             ret_list.append(ret_dict)
 
-        return ret_list
+        return sorted(ret_list, key=lambda d: d["name"].upper())
 
     def unpublish_project(
         self,
@@ -433,7 +433,7 @@ class Client:
             bool: Whether the unpublish was successful
         """
         inspection = getfullargspec(self.unpublish_project)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._atconn._check_connected()
 
@@ -442,14 +442,11 @@ class Client:
     def get_connected_warehouses(self) -> List[Dict]:
         """Returns metadata on all warehouses visible to the connected client
 
-        Raises:
-            UserError: If no connection established.
-
         Returns:
             List[Dict]: The list of available warehouses
         """
-
-        return self._atconn._get_connected_warehouses()
+        ret_list = self._atconn._get_connected_warehouses()
+        return sorted(ret_list, key=lambda d: d["name"].upper())
 
     def get_connected_databases(
         self,
@@ -458,15 +455,16 @@ class Client:
         """Get a list of databases the organization can access in the provided warehouse.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
 
         Returns:
             List[str]: The list of available databases
         """
         inspection = getfullargspec(self.get_connected_databases)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return self._atconn._get_connected_databases(warehouse_id=warehouse_id)
+        ret_list = self._atconn._get_connected_databases(warehouse_id=warehouse_id)
+        return sorted(ret_list, key=lambda d: d.upper())
 
     def get_connected_schemas(
         self,
@@ -476,16 +474,17 @@ class Client:
         """Get a list of schemas the organization can access in the provided warehouse and database.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
             database (str): The database to use.
 
         Returns:
             List[str]: The list of available tables
         """
         inspection = getfullargspec(self.get_connected_schemas)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return self._atconn._get_connected_schemas(warehouse_id=warehouse_id, database=database)
+        ret_list = self._atconn._get_connected_schemas(warehouse_id=warehouse_id, database=database)
+        return sorted(ret_list, key=lambda d: d.upper())
 
     def get_connected_tables(
         self,
@@ -496,19 +495,20 @@ class Client:
         """Get a list of tables the organization can access in the provided warehouse, database, and schema.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
             database (str): The database to use.
-            schema (str,): The schema to use.
+            schema (str): The schema to use.
 
         Returns:
             List[str]: The list of available tables
         """
         inspection = getfullargspec(self.get_connected_tables)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return self._atconn._get_connected_tables(
+        ret_list = self._atconn._get_connected_tables(
             warehouse_id=warehouse_id, database=database, schema=schema
         )
+        return sorted(ret_list, key=lambda d: d.upper())
 
     def get_table_columns(
         self,
@@ -521,7 +521,7 @@ class Client:
         """Get all columns in a given table
 
         Args:
-            warehouse_id (str): The atscale warehouse to use.
+            warehouse_id (str): The AtScale warehouse to use.
             table_name (str): The name of the table to use.
             database (str, optional): The database to use. Defaults to None to use default database
             schema (str, optional): The schema to use. Defaults to None to use default schema
@@ -531,15 +531,16 @@ class Client:
              List[Tuple]: Pairs of the columns and data-types (respectively) of the passed table
         """
         inspection = getfullargspec(self.get_table_columns)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return self._atconn._get_table_columns(
+        ret_list = self._atconn._get_table_columns(
             warehouse_id=warehouse_id,
             table_name=table_name,
             database=database,
             schema=schema,
             expected_columns=expected_columns,
         )
+        return sorted(ret_list, key=lambda d: d[0].upper())
 
     def get_query_columns(
         self,
@@ -549,16 +550,17 @@ class Client:
         """Get all columns of a direct query, to the given warehouse_id, as they are represented by AtScale.
 
         Args:
-            warehouse_id (str): The atscale warehouse to use.
+            warehouse_id (str): The AtScale warehouse to use.
             query (str): A valid query for the warehouse of the given id, of which to return the resulting columns
 
         Returns:
             List[Tuple]: A list of columns represented as Tuples of (name, data-type)
         """
         inspection = getfullargspec(self.get_query_columns)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return self._atconn._get_query_columns(warehouse_id=warehouse_id, query=query)
+        ret_list = self._atconn._get_query_columns(warehouse_id=warehouse_id, query=query)
+        return sorted(ret_list, key=lambda d: d[0].upper())
 
     def clone_project(
         self,
@@ -577,11 +579,9 @@ class Client:
             Project: The clone of the current project
         """
         inspection = getfullargspec(self.clone_project)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(
-            err_msg="Establishing a connection in the atconn field is required"
-        )
+        self._atconn._check_connected()
 
         cloned_project_id = project_utils.clone_project(
             self._atconn, base_project.draft_project_id, clone_name

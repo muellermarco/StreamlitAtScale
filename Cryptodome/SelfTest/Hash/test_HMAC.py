@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.HMAC"""
+"""Self-test suite for Crypto.Hash.HMAC"""
 
 import unittest
 from binascii import hexlify
-from Cryptodome.Util.py3compat import tostr, tobytes
+from Crypto.Util.py3compat import tostr, tobytes
 
-from Cryptodome.Hash import (HMAC, MD5, SHA1, SHA256,
+from Crypto.Hash import (HMAC, MD5, SHA1, SHA256,
                          SHA224, SHA384, SHA512,
                          RIPEMD160,
                          SHA3_224, SHA3_256, SHA3_384, SHA3_512)

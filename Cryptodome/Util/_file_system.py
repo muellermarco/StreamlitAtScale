@@ -36,14 +36,14 @@ def pycryptodome_filename(dir_comps, filename):
 
     dir_comps : list of string
         The list of directory names in the PyCryptodome package.
-        The first element must be "Cryptodome".
+        The first element must be "Crypto".
 
     filename : string
         The filename (inclusing extension) in the target directory.
     """
 
-    if dir_comps[0] != "Cryptodome":
-        raise ValueError("Only available for modules under 'Cryptodome'")
+    if dir_comps[0] != "Crypto":
+        raise ValueError("Only available for modules under 'Crypto'")
 
     dir_comps = list(dir_comps[1:]) + [filename]
 

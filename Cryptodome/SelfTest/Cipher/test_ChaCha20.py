@@ -33,11 +33,11 @@ import re
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.Util.py3compat import b, tobytes, bchr
-from Cryptodome.Util.strxor import strxor_c
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import b, tobytes, bchr
+from Crypto.Util.strxor import strxor_c
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Cipher import ChaCha20
+from Crypto.Cipher import ChaCha20
 
 
 class ChaCha20Test(unittest.TestCase):
@@ -95,7 +95,7 @@ class ChaCha20Test(unittest.TestCase):
 
     def test_streaming(self):
         """Verify that an arbitrary number of bytes can be encrypted/decrypted"""
-        from Cryptodome.Hash import SHA1
+        from Crypto.Hash import SHA1
 
         segments = (1, 3, 5, 7, 11, 17, 23)
         total = sum(segments)
@@ -261,7 +261,7 @@ class XChaCha20Test(unittest.TestCase):
     def test_hchacha20(self):
         # Section 2.2.1
 
-        from Cryptodome.Cipher.ChaCha20 import _HChaCha20
+        from Crypto.Cipher.ChaCha20 import _HChaCha20
 
         key = b"00:01:02:03:04:05:06:07:08:09:0a:0b:0c:0d:0e:0f:10:11:12:13:14:15:16:17:18:19:1a:1b:1c:1d:1e:1f"
         key = unhexlify(key.replace(b":", b""))

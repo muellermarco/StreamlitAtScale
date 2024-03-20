@@ -1,7 +1,7 @@
 import unittest
 
 import binascii
-from Cryptodome.Util.RFC1751 import key_to_english, english_to_key
+from Crypto.Util.RFC1751 import key_to_english, english_to_key
 
 
 class RFC1751_Tests(unittest.TestCase):
@@ -28,7 +28,7 @@ class RFC1751_Tests(unittest.TestCase):
 
 
 def get_tests(config={}):
-    from Cryptodome.SelfTest.st_common import list_test_cases
+    from Crypto.SelfTest.st_common import list_test_cases
     tests = list_test_cases(RFC1751_Tests)
     return tests
 

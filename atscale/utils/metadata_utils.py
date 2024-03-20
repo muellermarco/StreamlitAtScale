@@ -1,80 +1,79 @@
 from typing import List, Dict, Tuple
 from numpy import argmax
-from atscale.parsers import project_parser
 
-from atscale.utils.dmv_utils import get_dmv_data
-from atscale.base.enums import Measure, Level, Hierarchy, Dimension, FeatureType
+from atscale.utils import dmv_utils
+from atscale.base import enums
 from atscale.errors import atscale_errors
 
 
-def _get_dimensions(data_model, filter_by: Dict[Dimension, List[str]] = None) -> dict:
+def _get_dimensions(data_model, filter_by: Dict[enums.Dimension, List[str]] = None) -> Dict:
     """Gets a dictionary of dictionaries with the dimension names and metadata.
 
     Args:
         data_model (DataModel): The DataModel object to search through
-        filter_by (dict[Dimension fields, str], optional): A dict with keys of fields and values of a list of that field's value
+        filter_by (Dict[enums.Dimension fields, str], optional): A dict with keys of fields and values of a list of that field's value
                 to exclusively include in the return. Defaults to None for no filtering.
 
     Returns:
-        dict: A dictionary of dictionaries where the dimension names are the keys in the outer dictionary
+        Dict: A dictionary of dictionaries where the dimension names are the keys in the outer dictionary
               while the inner keys are the following: 'description', 'type'(value is Time
               or Standard).
     """
-    dimension_dict = get_dmv_data(
+    dimension_dict = dmv_utils.get_dmv_data(
         model=data_model,
         fields=[
-            Dimension.description,
-            Dimension.type,
+            enums.Dimension.description,
+            enums.Dimension.type,
         ],
         filter_by=filter_by,
     )
     dimensions = {}
     for name, info in dimension_dict.items():
         dimensions[name] = {
-            "description": info[Dimension.description.name],
-            "type": info[Dimension.type.name],
+            "description": info[enums.Dimension.description.name],
+            "type": info[enums.Dimension.type.name],
         }
     return dimensions
 
 
 def _get_hierarchies(
     data_model,
-    filter_by: Dict[Hierarchy, List[str]] = None,
-) -> dict:
+    filter_by: Dict[enums.Hierarchy, List[str]] = None,
+) -> Dict:
     """Gets a dictionary of dictionaries with the hierarchies names and metadata.
     Secondary attributes are treated as their own hierarchies.
 
     Args:
         data_model (DataModel): The DataModel object to search through
-        filter_by (dict[Hierarchy fields, str], optional): A dict with keys of fields and values of a list of that field's value
+        filter_by (Dict[enums.Hierarchy fields, str], optional): A dict with keys of fields and values of a list of that field's value
                 to exclusively include in the return. Defaults to None for no filtering.
 
     Returns:
-        dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
+        Dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
               while the inner keys are the following: 'dimension', 'description', 'caption', 'folder', 'type'(value is Time
               or Standard), 'secondary_attribute'.
     """
-    hierarchy_dict = get_dmv_data(
+    hierarchy_dict = dmv_utils.get_dmv_data(
         model=data_model,
         fields=[
-            Hierarchy.dimension,
-            Hierarchy.description,
-            Hierarchy.folder,
-            Hierarchy.caption,
-            Hierarchy.type,
-            Hierarchy.secondary_attribute,
+            enums.Hierarchy.dimension,
+            enums.Hierarchy.description,
+            enums.Hierarchy.folder,
+            enums.Hierarchy.caption,
+            enums.Hierarchy.type,
+            enums.Hierarchy.secondary_attribute,
         ],
         filter_by=filter_by,
     )
     hierarchies = {}
     for name, info in hierarchy_dict.items():
         hierarchies[name] = {
-            "dimension": info[Hierarchy.dimension.name],
-            "description": info[Hierarchy.description.name],
-            "caption": info[Hierarchy.caption.name],
-            "folder": info[Hierarchy.folder.name],
-            "type": info[Hierarchy.type.name],
-            "secondary_attribute": info[Hierarchy.secondary_attribute.name],
+            "dimension": info[enums.Hierarchy.dimension.name],
+            "description": info[enums.Hierarchy.description.name],
+            "caption": info[enums.Hierarchy.caption.name],
+            "folder": info[enums.Hierarchy.folder.name],
+            "type": info[enums.Hierarchy.type.name],
+            "secondary_attribute": info[enums.Hierarchy.secondary_attribute.name],
         }
     return hierarchies
 
@@ -93,16 +92,16 @@ def _get_hierarchy_levels(
         List[str]: A list containing the hierarchy's levels
     """
 
-    levels_from_hierarchy = get_dmv_data(
+    levels_from_hierarchy = dmv_utils.get_dmv_data(
         model=data_model,
-        fields=[Level.name],
-        id_field=Level.hierarchy,
-        filter_by={Level.hierarchy: [hierarchy_name]},
+        fields=[enums.Level.name],
+        id_field=enums.Level.hierarchy,
+        filter_by={enums.Level.hierarchy: [hierarchy_name]},
     )
 
     hierarchy = levels_from_hierarchy.get(hierarchy_name)
     if hierarchy:
-        levels = hierarchy.get(Level.name.name, [])
+        levels = hierarchy.get(enums.Level.name.name, [])
         if type(levels) is list:
             return levels
         else:
@@ -125,11 +124,11 @@ def _get_dimension_and_lowest_hierarchy_level(
         Tuple[str]: The 1.) dimension and 2.) lowest level of the given hierarchy
     """
 
-    hier_dict = get_dmv_data(
+    hier_dict = dmv_utils.get_dmv_data(
         model=data_model,
-        fields=[Level.name, Level.dimension, Level.level_number],
-        id_field=Level.hierarchy,
-        filter_by={Level.hierarchy: [hierarchy_name]},
+        fields=[enums.Level.name, enums.Level.dimension, enums.Level.level_number],
+        id_field=enums.Level.hierarchy,
+        filter_by={enums.Level.hierarchy: [hierarchy_name]},
     ).get(hierarchy_name)
 
     if hier_dict:
@@ -155,43 +154,11 @@ def _get_dimension_and_lowest_hierarchy_level(
 
             missing_keys = [key for key in key_dict if not key_dict[key]]
 
-            raise atscale_errors.AtScaleServerError(
+            raise atscale_errors.ModelingError(
                 f"Error in DMV response fetching hierarchy info; key(s): {missing_keys} not found"
             )
     else:
-        raise atscale_errors.AtScaleServerError(f"Hierarchy: {hierarchy_name} does not exist")
-
-
-def _get_feature_description(
-    data_model,
-    feature: str,
-) -> str:
-    """Returns the description of a given feature given the DataModel containing it.
-
-    Args:
-        data_model (DataModel): The DataModel object the given feature exists within.
-        feature (str): The query name of the feature to retrieve the description of.
-
-    Returns:
-        str: The description of the given feature.
-    """
-    return data_model.get_features(feature_list=[feature])[feature]["description"]
-
-
-def _get_feature_expression(
-    data_model,
-    feature: str,
-) -> str:
-    """Returns the expression of a given feature given the DataModel containing it.
-
-    Args:
-        data_model (DataModel): The DataModel object the given feature exists in.
-        feature (str): The query name of the feature to return the expression of.
-
-    Returns:
-        str: The expression of the given feature.
-    """
-    return data_model.get_features(feature_list=[feature])[feature]["expression"]
+        raise atscale_errors.ObjectNotFoundError(f"Hierarchy: {hierarchy_name} does not exist")
 
 
 def _get_all_numeric_feature_names(
@@ -210,7 +177,7 @@ def _get_all_numeric_feature_names(
     """
     folders = [folder] if folder else None
     return list(
-        data_model.get_features(folder_list=folders, feature_type=FeatureType.NUMERIC).keys()
+        data_model.get_features(folder_list=folders, feature_type=enums.FeatureType.NUMERIC).keys()
     )
 
 
@@ -230,7 +197,9 @@ def _get_all_categorical_feature_names(
     """
     folders = [folder] if folder else None
     return list(
-        data_model.get_features(folder_list=folders, feature_type=FeatureType.CATEGORICAL).keys()
+        data_model.get_features(
+            folder_list=folders, feature_type=enums.FeatureType.CATEGORICAL
+        ).keys()
     )
 
 
@@ -246,9 +215,9 @@ def _get_folders(
         List[str]: A list of the available folders
     """
 
-    measure_dict = get_dmv_data(model=data_model, fields=[Measure.folder])
+    measure_dict = dmv_utils.get_dmv_data(model=data_model, fields=[enums.Measure.folder])
 
-    hierarchy_dict = get_dmv_data(model=data_model, fields=[Hierarchy.folder])
+    hierarchy_dict = dmv_utils.get_dmv_data(model=data_model, fields=[enums.Hierarchy.folder])
 
     folders = sorted(
         set(

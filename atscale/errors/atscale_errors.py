@@ -11,20 +11,6 @@ class AtScaleExtrasDependencyImportError(Exception):
         message = f"{nested_error}\nYou may need to run pip " f"install 'atscale[{extras_type}]'"
         super().__init__(message)
 
-
-class ValidationError(Exception):
-    """This error occurs when a request to the AtScale server was rejected due to being an invalid request.
-    This includes but is not limited to: invalid or missing request parameters, and the project JSON being invalid.
-    """
-
-    def __init__(
-        self,
-        message,
-    ):
-        self.message = message
-        super().__init__(message)
-
-
 class AuthenticationError(Exception):
     """This error occurs when a request to the AtScale server was rejected due to an invalid authentication.
     Often resulting from a bad username/password or an expired token."""
@@ -84,17 +70,6 @@ class DisabledDesignCenterError(Exception):
         super().__init__(message)
 
 
-class UserError(Exception):
-    """This error occurs when the user inputs something that throws an error, specifically something they should
-    have known to avoid according to the doc string of that given function/class"""
-    def __init__(
-        self,
-        message,
-    ):
-        self.message = message
-        super().__init__(message)
-
-
 class DependentMeasureException(Exception):
     """This error occurs when a user tries to delete an object while attempting to perserve
     its children."""
@@ -105,10 +80,8 @@ class DependentMeasureException(Exception):
         self.message = message
         super().__init__(message)
 
-
-class EDAException(Exception):
-    """This error occurs when the EDA module throws an exception, specifically occuring due to SQL 
-    ML operations throwing an error."""
+class UnsupportedOperationException(Exception):
+    """This error occurs when the user tries to perform an unsupported action."""
     def __init__(
         self,
         message,
@@ -117,8 +90,55 @@ class EDAException(Exception):
         super().__init__(message)
 
 
-class UnsupportedOperationException(Exception):
-    """This error occurs when the user tries to perform an unsupported action."""
+class CollisionError(Exception):
+    """This error occurs when there is a conflict with an existing object in AtScale. 
+    """
+
+    def __init__(
+        self,
+        message,
+    ):
+        self.message = message
+        super().__init__(message)
+
+class ObjectNotFoundError(Exception):
+    """This error occurs when the user inputs an object that is not found in the model or project."""
+    def __init__(
+        self,
+        message,
+    ):
+        self.message = message
+        super().__init__(message)
+
+class WorkFlowError(Exception):
+    """This error occurs when a function is called that isn't possible with the current state of the environment."""
+    def __init__(
+        self,
+        message,
+    ):
+        self.message = message
+        super().__init__(message)
+
+
+##### Errors below here should only be raised when there are issues on the code side. Ie a bug
+
+class ModelingError(Exception):
+    """This error occurs when an invalid model representation has been created. 
+    """
+
+    def __init__(
+        self,
+        message,
+    ):
+        self.message = message
+        super().__init__(message)
+
+
+class ValidationError(Exception):
+    """This error occurs when a request to the AtScale server was rejected due to being an invalid request.
+    This includes but is not limited to: invalid or missing request parameters, and the project JSON being invalid.
+    """
+
     def __init__(
         self,
         message,

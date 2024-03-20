@@ -31,7 +31,7 @@
 """
 MD4 is specified in RFC1320_ and produces the 128 bit digest of a message.
 
-    >>> from Cryptodome.Hash import MD4
+    >>> from Crypto.Hash import MD4
     >>>
     >>> h = MD4.new()
     >>> h.update(b'Hello')
@@ -43,16 +43,16 @@ This algorithm is insecure. Do not use it for new designs.
 .. _RFC1320: http://tools.ietf.org/html/rfc1320
 """
 
-from Cryptodome.Util.py3compat import bord
+from Crypto.Util.py3compat import bord
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t,
                                   c_uint8_ptr)
 
 _raw_md4_lib = load_pycryptodome_raw_lib(
-                        "Cryptodome.Hash._MD4",
+                        "Crypto.Hash._MD4",
                         """
                         int md4_init(void **shaState);
                         int md4_destroy(void *shaState);

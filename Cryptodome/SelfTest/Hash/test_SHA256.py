@@ -22,15 +22,15 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHA256"""
+"""Self-test suite for Crypto.Hash.SHA256"""
 
 import unittest
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 class LargeSHA256Test(unittest.TestCase):
     def runTest(self):
         """SHA256: 512/520 MiB test"""
-        from Cryptodome.Hash import SHA256
+        from Crypto.Hash import SHA256
         zeros = bchr(0x00) * (1024*1024)
 
         h = SHA256.new(zeros)
@@ -63,7 +63,7 @@ def get_tests(config={}):
             'a' * 10**6,
              '"a" * 10**6'),
 
-        # Test for an old PyCryptodome bug.
+        # Test for an old PyCrypto bug.
         ('f7fd017a3c721ce7ff03f3552c0813adcc48b7f33f07e5e2ba71e23ea393d103',
             'This message is precisely 55 bytes long, to test a bug.',
             'Length = 55 (mod 64)'),
@@ -75,7 +75,7 @@ def get_tests(config={}):
          'Franz jagt im komplett verwahrlosten Taxi quer durch Bayern'),
     ]
 
-    from Cryptodome.Hash import SHA256
+    from Crypto.Hash import SHA256
     from .common import make_hash_tests
     tests = make_hash_tests(SHA256, "SHA256", test_data,
         digest_size=32,

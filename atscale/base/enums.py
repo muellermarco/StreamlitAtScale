@@ -1,7 +1,8 @@
 from html import unescape
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
 from aenum import Enum, NoAlias
+
+from atscale.utils import validation_utils
 from atscale.errors import atscale_errors
 
 
@@ -59,7 +60,7 @@ class Dimension(DMVColumnBaseClass):
     def internal_func_dict(self):
         def hierarchy_type_func(type_number: str):
             inspection = getfullargspec(hierarchy_type_func)
-            validate_by_type_hints(inspection=inspection, func_params=locals())
+            validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
             if type_number == "1":
                 return "Time"
@@ -103,7 +104,7 @@ class Hierarchy(DMVColumnBaseClass):
     def internal_func_dict(self):
         def hierarchy_type_func(type_number: str):
             inspection = getfullargspec(hierarchy_type_func)
-            validate_by_type_hints(inspection=inspection, func_params=locals())
+            validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
             if type_number == "1":
                 return "Time"
@@ -276,7 +277,7 @@ class TimeSteps(Enum):
 
 
 class TimeLevels(Enum):
-    """Breaks down the various time levels supported in both atscale and ansi sql"""
+    """Breaks down the various time levels supported in both AtScale and ansi sql"""
 
     def __new__(cls, value, timestep, sql_name):
         obj = object.__new__(cls)
@@ -299,8 +300,8 @@ class TimeLevels(Enum):
 
     def get_sql_expression(
         self,
-        col,
-        platform_type,
+        col: str,
+        dbconn,
     ):
         if (
             self.sql_name == "day"
@@ -308,29 +309,9 @@ class TimeLevels(Enum):
             or self.sql_name == "minute"
             or self.sql_name == "second"
         ):
-            if platform_type == PlatformType.IRIS:
-                return f"DATE({col})"
-            elif platform_type == PlatformType.SYNAPSE or platform_type == PlatformType.MSSQL:
-                return f"DATETRUNC({self.sql_name}, {col})"
-            elif platform_type == PlatformType.DATABRICKS:
-                return f'date_trunc("{self.sql_name}", {col})'
-            elif platform_type == PlatformType.GBQ:
-                return f"date_trunc( {col}, {self.sql_name})"
-            else:
-                return f"date_trunc({self.sql_name}, {col})"
+            return dbconn._sql_expression_day_or_less(self.sql_name, column_name=col)
         else:
-            if (
-                platform_type == PlatformType.IRIS
-                or platform_type == PlatformType.SYNAPSE
-                or platform_type == PlatformType.MSSQL
-            ):
-                return f"DATEPART({self.sql_name}, {col})"
-            elif platform_type == PlatformType.DATABRICKS:
-                return f'date_part("{self.sql_name}", {col})'
-            elif platform_type == PlatformType.GBQ:
-                return f"EXTRACT({self.sql_name} from {col})"
-            else:
-                return f"date_part({self.sql_name}, {col})"
+            return dbconn._sql_expression_week_or_more(self.sql_name, column_name=col)
 
 
 class Aggs(Enum):
@@ -370,20 +351,21 @@ class Aggs(Enum):
     def visual_rep(self):
         return self._customer_representation
 
-    @classmethod
-    def from_properties(cls, property_dict):
-        if property_dict is None:
-            return ""
-        type_section = property_dict.get("type", {})
-        if "measure" in type_section:
-            return cls[type_section["measure"]["default-aggregation"]]
-        elif "count-distinct" in type_section:
-            if type_section["count-distinct"]["approximate"]:
-                return cls.DISTINCT_COUNT_ESTIMATE
-            else:
-                return cls.DISTINCT_COUNT
-        elif "count-nonnull":
-            return cls.NON_DISTINCT_COUNT
+    # UNUSED UNTIL THE DMV BUG IS SORTED
+    # @classmethod
+    # def from_properties(cls, property_dict):
+    #     if property_dict is None:
+    #         return ""
+    #     type_section = property_dict.get("type", {})
+    #     if "measure" in type_section:
+    #         return cls[type_section["measure"]["default-aggregation"]]
+    #     elif "count-distinct" in type_section:
+    #         if type_section["count-distinct"]["approximate"]:
+    #             return cls.DISTINCT_COUNT_ESTIMATE
+    #         else:
+    #             return cls.DISTINCT_COUNT
+    #     elif "count-nonnull":
+    #         return cls.NON_DISTINCT_COUNT
 
     @classmethod
     def from_dmv_number(cls, number):
@@ -415,7 +397,7 @@ class Aggs(Enum):
         key_ref,
     ):
         if self.requires_key_ref() and key_ref is None:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ModelingError(
                 f"A key-ref id must be made and passed into this function in order to make a valid "
                 f"{self.name} measure dict."
             )
@@ -445,43 +427,60 @@ class MDXAggs(Enum):
     MIN = "Min"
 
 
-class PandasTableExistsActionType(Enum):
+class TableExistsAction(Enum):
     """Potential actions to take if a table already exists when trying to write a dataframe to that database table.
-    APPEND: Append the rows to the end of the existing table
-    REPLACE: Completely replace the existing table
-    FAIL: raise an error
-    """
-
-    APPEND = "append"
-    REPLACE = "replace"
-    FAIL = "fail"
-
-
-class PysparkTableExistsActionType(Enum):
-    """Potential actions to take if a table already exists when trying to write a pyspark dataframe to that database table.
-    APPEND: Append content of the pyspark dataframe to existing data or table
-    OVERWRITE: Overwrite existing data with the content of pyspak dataframe
-    IGNORE: Ignore current write operation if data/ table already exists without any error
+    APPEND: Append content of the dataframe to existing data or table
+    OVERWRITE: Overwrite existing data with the content of dataframe
+    IGNORE: Ignore current write operation if data/ table already exists without any error. This is not valid for
+        pandas dataframes
     ERROR: Throw an exception if data or table already exists
     """
 
-    APPEND = "append"
-    OVERWRITE = "overwrite"
-    IGNORE = "ignore"
-    ERROR = "error"
+    def __new__(cls, value, pandas_value):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj.pandas_value = pandas_value
+        return obj
+
+    APPEND = "append", "append"
+    OVERWRITE = "overwrite", "replace"
+    IGNORE = "ignore", None
+    ERROR = "error", "fail"
 
 
 class PlatformType(Enum):
     """PlatformTypes describe a type of supported data warehouse"""
 
-    SNOWFLAKE = "snowflake"
-    REDSHIFT = "redshift"
-    GBQ = "bigquery"
-    DATABRICKS = "databrickssql"
-    IRIS = "iris"
-    SYNAPSE = "azuresqldw"
-    MSSQL = "mssql"
-    POSTGRES = "postgresql"
+    from atscale.db.connections import (
+        BigQuery,
+        Databricks,
+        Iris,
+        MSSQL as MS_SQL,
+        Postgres,
+        Redshift,
+        Snowflake,
+        Synapse,
+    )
+    from atscale.db.sql_connection import SQLConnection
+
+    def __new__(
+        cls,
+        dbconn_str: str,
+        dbconn: SQLConnection = None,
+    ):
+        obj = object.__new__(cls)
+        obj._value_ = dbconn_str
+        obj.dbconn = dbconn
+        return obj
+
+    SNOWFLAKE = (Snowflake.platform_type_str, Snowflake)
+    REDSHIFT = (Redshift.platform_type_str, Redshift)
+    GBQ = (BigQuery.platform_type_str, BigQuery)
+    DATABRICKS = (Databricks.platform_type_str, Databricks)
+    IRIS = (Iris.platform_type_str, Iris)
+    SYNAPSE = (Synapse.platform_type_str, Synapse)
+    MSSQL = (MS_SQL.platform_type_str, MS_SQL)
+    POSTGRES = (Postgres.platform_type_str, Postgres)
 
 
 class FeatureFormattingType(Enum):
@@ -542,7 +541,7 @@ class MappedColumnDataTypes(Enum):
     """Used for specifying data type of mapped column"""
 
     Int = "Int"
-    Long = ("Long",)
+    Long = "Long"
     Boolean = "Boolean"
     String = "String"
     Float = "Float"

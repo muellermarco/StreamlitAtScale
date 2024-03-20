@@ -1,6 +1,6 @@
 from typing import Union, Optional
 from typing_extensions import Protocol
-from Cryptodome.PublicKey.ECC import EccKey
+from Crypto.PublicKey.ECC import EccKey
 
 class Hash(Protocol):
     def digest(self) -> bytes: ...

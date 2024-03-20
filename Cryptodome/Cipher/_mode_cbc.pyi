@@ -1,6 +1,6 @@
 from typing import Union, overload
 
-from Cryptodome.Util._raw_api import SmartPointer
+from Crypto.Util._raw_api import SmartPointer
 
 Buffer = Union[bytes, bytearray, memoryview]
 

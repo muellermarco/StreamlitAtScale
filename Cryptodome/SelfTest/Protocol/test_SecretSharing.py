@@ -34,10 +34,10 @@
 from unittest import main, TestCase, TestSuite
 from binascii import unhexlify, hexlify
 
-from Cryptodome.Util.py3compat import *
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import *
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Protocol.SecretSharing import Shamir, _Element, \
+from Crypto.Protocol.SecretSharing import Shamir, _Element, \
                                           _mult_gf2, _div_gf2
 
 class GF2_Tests(TestCase):
@@ -70,7 +70,7 @@ class GF2_Tests(TestCase):
         self.assertEqual(w, z)
 
     def test_div_gf2(self):
-        from Cryptodome.Util.number import size as deg
+        from Crypto.Util.number import size as deg
 
         x, y = _div_gf2(567, 7)
         self.assertTrue(deg(y) < deg(7))

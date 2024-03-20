@@ -1,13 +1,12 @@
 from abc import abstractmethod
+from typing import Dict, List
 from pandas import DataFrame, read_sql_query
-import inspect
 import logging
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
-from atscale.errors.atscale_errors import UserError
-from atscale.db.sql_connection import SQLConnection
-from atscale.base.enums import PandasTableExistsActionType
+
 from atscale.utils import validation_utils
+from atscale.db.sql_connection import SQLConnection
+from atscale.base import enums
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +72,7 @@ class SQLAlchemyConnection(SQLConnection):
         """Constructs a connection parameters from the instance variables needed to interact with the DB
 
         Returns:
-            dict: The connection parameters to the DB of interest
+            Dict: The connection parameters to the DB of interest
         """
         return {}
 
@@ -94,37 +93,20 @@ class SQLAlchemyConnection(SQLConnection):
             # URL anew and create the engine rather than hanging onto a diposed one
             self._engine = None
 
-    def submit_query(
-        self,
-        query: str,
-    ) -> DataFrame:
-        """This submits a single query and reads the results into a DataFrame. It closes the connection after each query.
-
-        Args:
-            query (str): SQL statement to be executed
-
-        Returns:
-            DataFrame: the results of executing the SQL statement or query parameter, read into a DataFrame
-        """
-        inspection = getfullargspec(self.submit_query)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
-
-        return self.submit_queries([query])[0]
-
     def submit_queries(
         self,
-        query_list: list,
-    ) -> list:
+        query_list: List,
+    ) -> List[DataFrame]:
         """Submits a list of queries, collecting the results in a list of dictionaries.
 
         Args:
             query_list (list): a list of queries to submit.
 
         Returns:
-            list(DataFrame): A list of pandas DataFrames containing the results of the queries.
+            List(DataFrame): A list of pandas DataFrames containing the results of the queries.
         """
         inspection = getfullargspec(self.submit_queries)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         results = []
         # This uses "with" for transaction management on the connection. If this is unfamiliar,
@@ -149,7 +131,7 @@ class SQLAlchemyConnection(SQLConnection):
         from sqlalchemy import text
 
         inspection = getfullargspec(self.execute_statements)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         with self.engine.connect() as connection:
             for statement in statement_list:
@@ -159,8 +141,8 @@ class SQLAlchemyConnection(SQLConnection):
         self,
         table_name: str,
         dataframe: DataFrame,
-        dtypes: dict = None,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        dtypes: Dict = None,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         chunksize: int = 1000,
     ):
         """Writes the provided pandas DataFrame into the provided table name. Can pass in if_exists to indicate the intended behavior if
@@ -169,14 +151,19 @@ class SQLAlchemyConnection(SQLConnection):
         Args:
             table_name (str): What table to write the dataframe into
             dataframe (DataFrame): The pandas DataFrame to write into the table
-            dtypes (dict, optional): the datatypes of the passed dataframe. Keys should match the column names. Defaults to None
+            dtypes (Dict, optional): the datatypes of the passed dataframe. Keys should match the column names. Defaults to None
                 and type will be text.
-            if_exists (PandasTableExistsActionType, optional): The intended behavior in case of table name collisions.
-                Defaults to PandasTableExistsActionType.FAIL.
+            if_exists (enums.TableExistsAction, optional): The intended behavior in case of table name collisions.
+                Defaults to enums.TableExistsAction.ERROR.
             chunksize (int, optional): the chunksize for the write operation.
         """
-        inspection = getfullargspec(self.execute_statements)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        inspection = getfullargspec(self.write_df_to_db)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         with self.engine.connect() as connection:
             dataframe.to_sql(
@@ -187,5 +174,5 @@ class SQLAlchemyConnection(SQLConnection):
                 index=False,
                 dtype=dtypes,
                 chunksize=chunksize,
-                if_exists=if_exists.value,
+                if_exists=if_exists.pandas_value,
             )

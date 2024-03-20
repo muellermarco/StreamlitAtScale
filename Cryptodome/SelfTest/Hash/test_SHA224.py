@@ -22,7 +22,7 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHA224"""
+"""Self-test suite for Crypto.Hash.SHA224"""
 
 # Test vectors from various sources
 # This is a list of (expected_result, input[, description]) tuples.
@@ -49,7 +49,7 @@ test_data = [
 ]
 
 def get_tests(config={}):
-    from Cryptodome.Hash import SHA224
+    from Crypto.Hash import SHA224
     from .common import make_hash_tests
     return make_hash_tests(SHA224, "SHA224", test_data,
         digest_size=28,

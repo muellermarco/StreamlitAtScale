@@ -1,21 +1,15 @@
 import getpass
-import inspect
 import cryptocode
 import logging
-import inspect
 import ssl
 from typing import Dict, List
 import pandas as pd
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
 from atscale.errors import atscale_errors
 from atscale.db.sqlalchemy_connection import SQLAlchemyConnection
-from atscale.base.enums import (
-    PlatformType,
-    PysparkTableExistsActionType,
-    PandasTableExistsActionType,
-)
-from atscale.utils import db_utils
+from atscale.base import enums
+from atscale.utils import db_utils, validation_utils
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +19,7 @@ class Snowflake(SQLAlchemyConnection):
     interactions with a Snowflake DB.
     """
 
-    platform_type: PlatformType = PlatformType.SNOWFLAKE
+    platform_type_str: str = "snowflake"
 
     def __init__(
         self,
@@ -70,7 +64,7 @@ class Snowflake(SQLAlchemyConnection):
         # since it doesn't know which db is being used
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._username = username
         self._account = account
@@ -80,24 +74,24 @@ class Snowflake(SQLAlchemyConnection):
 
         auth_methods = []
         if token:
-            self._token = cryptocode.encrypt(token, self.platform_type.value)
+            self._token = cryptocode.encrypt(token, self.platform_type_str)
             auth_methods.append("token")
         else:
             self._token = None
         if private_key:
             try:
                 self._private_key = cryptocode.encrypt(
-                    ssl.DER_cert_to_PEM_cert(private_key), self.platform_type.value
+                    ssl.DER_cert_to_PEM_cert(private_key), self.platform_type_str
                 )
             except:
-                raise atscale_errors.UserError(
+                raise ValueError(
                     "Error parsing private key, make sure it is a valid DER encoded byte string"
                 )
             auth_methods.append("private_key")
         else:
             self._private_key = None
         if password:
-            self._password = cryptocode.encrypt(password, self.platform_type.value)
+            self._password = cryptocode.encrypt(password, self.platform_type_str)
             auth_methods.append("password")
         else:
             self._password = None
@@ -203,7 +197,7 @@ class Snowflake(SQLAlchemyConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._password = cryptocode.encrypt(value, self.platform_type.value)
+        self._password = cryptocode.encrypt(value, self.platform_type_str)
         self.dispose_engine()
 
     @property
@@ -220,10 +214,10 @@ class Snowflake(SQLAlchemyConnection):
             raise ValueError(f"The following required parameters are None: value")
         try:
             self._private_key = cryptocode.encrypt(
-                ssl.DER_cert_to_PEM_cert(value), self.platform_type.value
+                ssl.DER_cert_to_PEM_cert(value), self.platform_type_str
             )
         except:
-            raise atscale_errors.UserError(
+            raise ValueError(
                 "Error parsing private key, make sure it is a valid DER encoded byte string"
             )
         self.dispose_engine()
@@ -240,7 +234,7 @@ class Snowflake(SQLAlchemyConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._token = cryptocode.encrypt(value, self.platform_type.value)
+        self._token = cryptocode.encrypt(value, self.platform_type_str)
         self.dispose_engine()
 
     @property
@@ -287,123 +281,21 @@ class Snowflake(SQLAlchemyConnection):
     def _lin_reg_str():
         return "::FLOAT AS vals UNION ALL "
 
-    def _warehouse_variance(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        var = db_utils._construct_submit_return_warehouse_stats_one_feat(
-            dbconn=self,
-            samp_query="SELECT VAR_SAMP({0}) FROM {1}; ",
-            pop_query="SELECT VAR_POP({0}) FROM {1}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature=feature,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return var
-
-    def _warehouse_std(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        std = db_utils._construct_submit_return_warehouse_stats_one_feat(
-            dbconn=self,
-            samp_query="SELECT STDDEV_SAMP({0}) FROM {1}; ",
-            pop_query="SELECT STDDEV_POP({0}) FROM {1}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature=feature,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return std
-
-    def _warehouse_covariance(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature_1: str,
-        feature_2: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        cov = db_utils._construct_submit_return_warehouse_stats_two_feat(
-            dbconn=self,
-            samp_query="SELECT COVAR_SAMP({0}, {1}) FROM {2}; ",
-            pop_query="SELECT COVAR_POP({0}, {1}) FROM {2}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature1=feature_1,
-            feature2=feature_2,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return cov
-
-    def _warehouse_corrcoef(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature_1: str,
-        feature_2: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-    ):
-        corrcoef = db_utils._construct_submit_return_warehouse_stats_two_feat(
-            dbconn=self,
-            samp_query="SELECT CORR({0}, {1}) FROM {2}; ",
-            pop_query="SELECT CORR({0}, {1}) FROM {2}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature1=feature_1,
-            feature2=feature_2,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-        )
-
-        return corrcoef
-
     def _get_connection_url(self):
         from sqlalchemy.engine import URL
 
         if self._authenticator == "oauth" and not self._token:
             self._token = cryptocode.encrypt(
                 getpass.getpass(prompt="Please enter your oauth token for Snowflake: "),
-                self.platform_type.value,
+                self.platform_type_str,
             )
         if not self._private_key and not self._token:
             if not self._password:
                 self._password = cryptocode.encrypt(
                     getpass.getpass(prompt="Please enter your password for Snowflake: "),
-                    self.platform_type.value,
+                    self.platform_type_str,
                 )
-            password = cryptocode.decrypt(self._password, self.platform_type.value)
+            password = cryptocode.decrypt(self._password, self.platform_type_str)
             connection_url = URL.create(
                 "snowflake",
                 username=self._username,
@@ -425,10 +317,10 @@ class Snowflake(SQLAlchemyConnection):
         if self._role:
             parameters["role"] = self._role
         if self._token:
-            parameters["token"] = cryptocode.decrypt(self._token, self.platform_type.value)
+            parameters["token"] = cryptocode.decrypt(self._token, self.platform_type_str)
         if self._private_key:
             parameters["private_key"] = ssl.PEM_cert_to_DER_cert(
-                cryptocode.decrypt(self._private_key, self.platform_type.value)
+                cryptocode.decrypt(self._private_key, self.platform_type_str)
             )
         return parameters
 
@@ -464,11 +356,16 @@ class Snowflake(SQLAlchemyConnection):
         self,
         table_name,
         dataframe: pd.DataFrame,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         chunksize=10000,
     ):
         inspection = getfullargspec(self.write_df_to_db)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         from snowflake.connector.pandas_tools import pd_writer
 
@@ -484,15 +381,15 @@ class Snowflake(SQLAlchemyConnection):
         for colV in bad_time_types:
             unique_times = dataframe[colV].dt.time.unique()
             if len(unique_times) == 1:
-                if (dataframe[colV].dt.time.unique()[0].hour == 0) and (
-                    dataframe[colV].dt.time.unique()[0].minute == 0
-                ):
+                if pd.isnull(unique_times[0]):
+                    continue
+                if (unique_times[0].hour == 0) and (unique_times[0].minute == 0):
                     convert_times.append(colV)
                     continue
             actual_bad_time_types.append(colV)
 
         if len(actual_bad_time_types) > 0:
-            raise atscale_errors.UserError(
+            raise ValueError(
                 f"Please ensure the datetime64 columns {actual_bad_time_types} have timezones for snowflake compatibility."
             )
         for colV in convert_times:
@@ -505,7 +402,7 @@ class Snowflake(SQLAlchemyConnection):
             name=fixed_table_name,
             con=self.engine,
             schema=self._schema,
-            if_exists=if_exists.value,
+            if_exists=if_exists.pandas_value,
             index=False,
             chunksize=chunksize,
             method=pd_writer,
@@ -517,7 +414,7 @@ class Snowflake(SQLAlchemyConnection):
         jdbc_format: str,
         jdbc_options: Dict[str, str],
         table_name: str = None,
-        if_exists: PysparkTableExistsActionType = PysparkTableExistsActionType.ERROR,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     ):
         from functools import reduce
 
@@ -594,3 +491,105 @@ class Snowflake(SQLAlchemyConnection):
     #            return True
 
     #    return False
+
+    def _warehouse_variance(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        var = db_utils._construct_submit_return_warehouse_stats_one_feat(
+            dbconn=self,
+            samp_query="SELECT VAR_SAMP({0}) FROM {1}; ",
+            pop_query="SELECT VAR_POP({0}) FROM {1}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature=feature,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return var
+
+    def _warehouse_std(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        std = db_utils._construct_submit_return_warehouse_stats_one_feat(
+            dbconn=self,
+            samp_query="SELECT STDDEV_SAMP({0}) FROM {1}; ",
+            pop_query="SELECT STDDEV_POP({0}) FROM {1}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature=feature,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return std
+
+    def _warehouse_covariance(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature_1: str,
+        feature_2: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        cov = db_utils._construct_submit_return_warehouse_stats_two_feat(
+            dbconn=self,
+            samp_query="SELECT COVAR_SAMP({0}, {1}) FROM {2}; ",
+            pop_query="SELECT COVAR_POP({0}, {1}) FROM {2}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature1=feature_1,
+            feature2=feature_2,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return cov
+
+    def _warehouse_corrcoef(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature_1: str,
+        feature_2: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+    ):
+        corrcoef = db_utils._construct_submit_return_warehouse_stats_two_feat(
+            dbconn=self,
+            samp_query="SELECT CORR({0}, {1}) FROM {2}; ",
+            pop_query="SELECT CORR({0}, {1}) FROM {2}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature1=feature_1,
+            feature2=feature_2,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+        )
+
+        return corrcoef

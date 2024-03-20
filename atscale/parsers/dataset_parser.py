@@ -1,8 +1,8 @@
-from typing import Optional, List, Union
+from typing import Dict, Optional, List, Union
 
 
 class Column:
-    """A nicer representation for project dataset columns in the atscale project json,
+    """A nicer representation for project dataset columns in the AtScale project json,
     self.column is the raw dict, all fields are mutable but can not be reassigned unless they
     have a defined setter"""
 
@@ -27,7 +27,7 @@ class Column:
     def dtype(self) -> str:
         """Getter for the column's data type, as of 04-26-2023 this returns a string as we don't
         have the options for column dtypes semantically defined in our code base yet."""
-        return self.column["type"]["data-type"]
+        return self.column.get("type", {}).get("data-type")
 
 
 class Dataset:
@@ -35,21 +35,21 @@ class Dataset:
     self.dset is the raw dict, all fields are mutable but can not be reassigned unless they have a
     defined setter"""
 
-    def __init__(self, dataset_dict: dict):
+    def __init__(self, dataset_dict: Dict):
         self.dset = dataset_dict
 
     @property
     def name(self) -> str:
         """Returns the name field of the dataset"""
-        return self.dset["name"]
+        return self.dset.get("name")
 
     @property
     def columns(self) -> List[Column]:
         """Returns a list of columns from the dataset represented as Column objects"""
-        return [Column(c) for c in self.dset["physical"]["columns"]]
+        return [Column(c) for c in self.dset.get("physical", {}).get("columns", [])]
 
     @columns.setter
-    def columns(self, new_columns: List[Union[Column, dict]]):
+    def columns(self, new_columns: List[Union[Column, Dict]]):
         """Sets the columns of the dataset to the new_columns list,
         new_columns can be a list of Column objects or dicts or a mix.
         The input list will not be mutated"""
@@ -59,7 +59,7 @@ class Dataset:
                 raw_columns[i] = col.column  # pull out the actual dict
             else:
                 raw_columns[i] = col
-        self.dset["physical"]["columns"] = raw_columns
+        self.dset.setdefault("physical", {})["columns"] = raw_columns
 
     @property
     def table(self) -> Optional[str]:
@@ -76,4 +76,4 @@ class Dataset:
     @property
     def connection_id(self) -> str:
         """Returns the connection id (also known as warehouse_id) of the dataset"""
-        return self.dset["physical"]["connection"]["id"]
+        return self.dset.get("physical", {}).get("connection", {}).get("id")

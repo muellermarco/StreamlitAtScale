@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  Random/__init__.py : PyCryptodome random number generation
+#  Random/__init__.py : PyCrypto random number generation
 #
 # ===================================================================
 # The contents of this file are dedicated to the public domain.  To

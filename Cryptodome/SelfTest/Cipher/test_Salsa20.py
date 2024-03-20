@@ -22,15 +22,15 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.Salsa20"""
+"""Self-test suite for Crypto.Cipher.Salsa20"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import bchr
+from Crypto.Util.py3compat import bchr
 
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Cipher import Salsa20
+from Crypto.Cipher import Salsa20
 
 from .common import make_stream_tests
 

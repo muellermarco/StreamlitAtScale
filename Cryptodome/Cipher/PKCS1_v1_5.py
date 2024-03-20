@@ -22,39 +22,15 @@
 
 __all__ = ['new', 'PKCS115_Cipher']
 
-from Cryptodome import Random
-from Cryptodome.Util.number import bytes_to_long, long_to_bytes
-from Cryptodome.Util.py3compat import bord, is_bytes, _copy_bytes
-
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, c_size_t,
-                                  c_uint8_ptr)
-
-
-_raw_pkcs1_decode = load_pycryptodome_raw_lib("Cryptodome.Cipher._pkcs1_decode",
-                        """
-                        int pkcs1_decode(const uint8_t *em, size_t len_em,
-                                         const uint8_t *sentinel, size_t len_sentinel,
-                                         size_t expected_pt_len,
-                                         uint8_t *output);
-                        """)
-
-
-def _pkcs1_decode(em, sentinel, expected_pt_len, output):
-    if len(em) != len(output):
-        raise ValueError("Incorrect output length")
-
-    ret = _raw_pkcs1_decode.pkcs1_decode(c_uint8_ptr(em),
-                                         c_size_t(len(em)),
-                                         c_uint8_ptr(sentinel),
-                                         c_size_t(len(sentinel)),
-                                         c_size_t(expected_pt_len),
-                                         c_uint8_ptr(output))
-    return ret
+from Crypto import Random
+from Crypto.Util.number import bytes_to_long, long_to_bytes
+from Crypto.Util.py3compat import bord, is_bytes, _copy_bytes
+from ._pkcs1_oaep_decode import pkcs1_decode
 
 
 class PKCS115_Cipher:
     """This cipher can perform PKCS#1 v1.5 RSA encryption or decryption.
-    Do not instantiate directly. Use :func:`Cryptodome.Cipher.PKCS1_v1_5.new` instead."""
+    Do not instantiate directly. Use :func:`Crypto.Cipher.PKCS1_v1_5.new` instead."""
 
     def __init__(self, key, randfunc):
         """Initialize this PKCS#1 v1.5 cipher object.
@@ -113,7 +89,6 @@ class PKCS115_Cipher:
                 continue
             ps.append(new_byte)
         ps = b"".join(ps)
-        assert(len(ps) == k - mLen - 3)
         # Step 2b
         em = b'\x00\x02' + ps + b'\x00' + _copy_bytes(None, None, message)
         # Step 3a (OS2IP)
@@ -176,23 +151,20 @@ class PKCS115_Cipher:
         # Step 2a (O2SIP)
         ct_int = bytes_to_long(ciphertext)
 
-        # Step 2b (RSADP)
-        m_int = self._key._decrypt(ct_int)
-
-        # Complete step 2c (I2OSP)
-        em = long_to_bytes(m_int, k)
+        # Step 2b (RSADP) and Step 2c (I2OSP)
+        em = self._key._decrypt_to_bytes(ct_int)
 
         # Step 3 (not constant time when the sentinel is not a byte string)
         output = bytes(bytearray(k))
         if not is_bytes(sentinel) or len(sentinel) > k:
-            size = _pkcs1_decode(em, b'', expected_pt_len, output)
+            size = pkcs1_decode(em, b'', expected_pt_len, output)
             if size < 0:
                 return sentinel
             else:
                 return output[size:]
 
         # Step 3 (somewhat constant time)
-        size = _pkcs1_decode(em, sentinel, expected_pt_len, output)
+        size = pkcs1_decode(em, sentinel, expected_pt_len, output)
         return output[size:]
 
 
@@ -200,13 +172,13 @@ def new(key, randfunc=None):
     """Create a cipher for performing PKCS#1 v1.5 encryption or decryption.
 
     :param key:
-      The key to use to encrypt or decrypt the message. This is a `Cryptodome.PublicKey.RSA` object.
+      The key to use to encrypt or decrypt the message. This is a `Crypto.PublicKey.RSA` object.
       Decryption is only possible if *key* is a private RSA key.
     :type key: RSA key object
 
     :param randfunc:
       Function that return random bytes.
-      The default is :func:`Cryptodome.Random.get_random_bytes`.
+      The default is :func:`Crypto.Random.get_random_bytes`.
     :type randfunc: callable
 
     :returns: A cipher object `PKCS115_Cipher`.

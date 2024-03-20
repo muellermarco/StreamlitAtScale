@@ -1,7 +1,7 @@
 from typing import Union, Callable, Optional
 from typing_extensions import Protocol
 
-from Cryptodome.PublicKey.RSA import RsaKey
+from Crypto.PublicKey.RSA import RsaKey
 
 
 class Hash(Protocol):

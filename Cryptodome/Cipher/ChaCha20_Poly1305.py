@@ -30,15 +30,15 @@
 
 from binascii import unhexlify
 
-from Cryptodome.Cipher import ChaCha20
-from Cryptodome.Cipher.ChaCha20 import _HChaCha20
-from Cryptodome.Hash import Poly1305, BLAKE2s
+from Crypto.Cipher import ChaCha20
+from Crypto.Cipher.ChaCha20 import _HChaCha20
+from Crypto.Hash import Poly1305, BLAKE2s
 
-from Cryptodome.Random import get_random_bytes
+from Crypto.Random import get_random_bytes
 
-from Cryptodome.Util.number import long_to_bytes
-from Cryptodome.Util.py3compat import _copy_bytes, bord
-from Cryptodome.Util._raw_api import is_buffer
+from Crypto.Util.number import long_to_bytes
+from Crypto.Util.py3compat import _copy_bytes, bord
+from Crypto.Util._raw_api import is_buffer
 
 
 def _enum(**enums):
@@ -296,7 +296,7 @@ def new(**kwargs):
         (you can find them back in the ``nonce`` attribute).
     :type nonce: bytes, bytearray, memoryview
 
-    :Return: a :class:`Cryptodome.Cipher.ChaCha20.ChaCha20Poly1305Cipher` object
+    :Return: a :class:`Crypto.Cipher.ChaCha20.ChaCha20Poly1305Cipher` object
     """
 
     try:

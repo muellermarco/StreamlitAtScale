@@ -45,8 +45,8 @@ OCB is patented in US but `free licenses`_ exist for software implementations
 meant for non-military purposes.
 
 Example:
-    >>> from Cryptodome.Cipher import AES
-    >>> from Cryptodome.Random import get_random_bytes
+    >>> from Crypto.Cipher import AES
+    >>> from Crypto.Random import get_random_bytes
     >>>
     >>> key = get_random_bytes(32)
     >>> cipher = AES.new(key, AES.MODE_OCB)
@@ -71,19 +71,19 @@ Example:
 import struct
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bord, _copy_bytes, bchr
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long
-from Cryptodome.Util.strxor import strxor
+from Crypto.Util.py3compat import bord, _copy_bytes, bchr
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Util.strxor import strxor
 
-from Cryptodome.Hash import BLAKE2s
-from Cryptodome.Random import get_random_bytes
+from Crypto.Hash import BLAKE2s
+from Crypto.Random import get_random_bytes
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
                                   create_string_buffer, get_raw_buffer,
                                   SmartPointer, c_size_t, c_uint8_ptr,
                                   is_buffer)
 
-_raw_ocb_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_ocb", """
+_raw_ocb_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_ocb", """
                                     int OCB_start_operation(void *cipher,
                                         const uint8_t *offset_0,
                                         size_t offset_0_len,
@@ -502,8 +502,8 @@ def _create_ocb_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        A symmetric cipher module from `Cryptodome.Cipher`
-        (like `Cryptodome.Cipher.AES`).
+        A symmetric cipher module from `Crypto.Cipher`
+        (like `Crypto.Cipher.AES`).
 
     :Keywords:
       nonce : bytes/bytearray/memoryview

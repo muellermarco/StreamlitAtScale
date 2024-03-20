@@ -28,8 +28,8 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Util._raw_api import c_size_t
-from Cryptodome.Hash.cSHAKE128 import cSHAKE_XOF
+from Crypto.Util._raw_api import c_size_t
+from Crypto.Hash.cSHAKE128 import cSHAKE_XOF
 
 
 def _new(data, custom, function):

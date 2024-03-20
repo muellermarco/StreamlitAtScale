@@ -1,20 +1,14 @@
-from atscale.utils.eda_utils import (
-    _eda_check,
-    _generate_base_table_name,
-    _construct_and_submit_base_table_query,
-    _execute_with_name_collision_handling,
-)
+from inspect import getfullargspec
+from typing import List, Tuple, Dict
+from itertools import product
+import logging
+
+from atscale.project import project_helpers
+from atscale.utils import eda_utils, validation_utils
 from atscale.db.connections.snowflake import Snowflake
 from atscale.data_model.data_model import DataModel
 from atscale.errors import atscale_errors
-from atscale.utils import validation_utils
-from inspect import getfullargspec
-from typing import List, Tuple, Dict
-from atscale.base.enums import PlatformType, PandasTableExistsActionType
-from itertools import product
-import logging
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+from atscale.base import enums
 
 
 logger = logging.getLogger(__name__)
@@ -29,7 +23,7 @@ def pca(
     pc_num: int,
     numeric_features: List[str],
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> Tuple[Dict, Dict]:
@@ -43,30 +37,28 @@ def pca(
         numeric_features (List[str]): The query names of the numeric features to be analyzed via pca
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in numeric_features
-        if_exists (PandasTableExistsActionType, optional): The default action that pca takes when creating
-                                                           a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action that pca takes when creating
+                                                           a table with a preexisting name. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that pca will write tables to. Defaults to the database associated with the given dbconn.
         write_schema (str): The schema that pca will write tables to. Defaults to the schema associated with the given dbconn.
-    Raises:
-        UserError: Given dbconn must be to Snowflake at this point.
-        UserError: User can't select APPEND as an ActionType.
-        EDAException: User must be analyzing at least two numeric features.
-        EDAException: Number of PCs desired must be some positive integer less than or equal to the number of numeric features
-                      being analyzed.
-        EDAException: User may not pass constant-valued features.
 
     Returns:
         Tuple[DataFrame, DataFrame]: A pair of Dicts, the first containing the PCs and the second containing
                                      their percent weights
     """
     if dbconn is not None:
-        if dbconn.platform_type != PlatformType.SNOWFLAKE:
+        if not isinstance(dbconn, Snowflake):
             raise atscale_errors.UnsupportedOperationException(
                 f"This function is only supported for Snowflake at this time."
             )
 
     inspection = getfullargspec(pca)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
 
     if not write_database:
         write_database = dbconn._database
@@ -74,7 +66,9 @@ def pca(
     if not write_schema:
         write_schema = dbconn._schema
 
-    _eda_check(
+    project_helpers._check_published(data_model.project)
+
+    eda_utils._eda_check(
         data_model=data_model,
         numeric_features=numeric_features,
         granularity_levels=granularity_levels,
@@ -84,19 +78,19 @@ def pca(
     dim = len(numeric_features)
 
     if dim < 2:
-        raise atscale_errors.EDAException(
+        raise ValueError(
             "Number of numeric features to be analyzed must be greater than or equal to 2"
         )
 
     if type(pc_num) != int or pc_num > dim or pc_num <= 0:
-        raise atscale_errors.EDAException(
+        raise ValueError(
             "Number of PCs must be some positive integer less than or equal to the number of features"
         )
 
-    base_table_name = _generate_base_table_name()
+    base_table_name = eda_utils._generate_base_table_name()
     three_part_name = f"{write_database}.{write_schema}.{base_table_name}"
 
-    _construct_and_submit_base_table_query(
+    eda_utils._construct_and_submit_base_table_query(
         dbconn=dbconn,
         data_model=data_model,
         base_table_name=three_part_name,
@@ -113,7 +107,7 @@ def pca(
         dbconn=dbconn,
     )
 
-    _execute_with_name_collision_handling(
+    eda_utils._execute_with_name_collision_handling(
         dbconn=dbconn,
         query_list=query_statements,
         drop_list=drop_statements,
@@ -194,7 +188,7 @@ def _get_pca_sql(
     iter_num = QR_ITERATIONS
 
     if iter_num <= 0 or type(iter_num) != int:
-        raise atscale_errors.EDAException("Number of QR iterations must be some positive integer")
+        raise ValueError("Number of QR iterations must be some positive integer")
 
     # DROP IF EXISTS string to clear tables/views in case prior run stopped short
     query_statements += drop_statements

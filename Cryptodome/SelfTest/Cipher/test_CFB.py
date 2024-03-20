@@ -31,13 +31,13 @@
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Util.py3compat import tobytes, is_string
-from Cryptodome.Cipher import AES, DES3, DES
-from Cryptodome.Hash import SHAKE128
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import tobytes, is_string
+from Crypto.Cipher import AES, DES3, DES
+from Crypto.Hash import SHAKE128
 
-from Cryptodome.SelfTest.Cipher.test_CBC import BlockChainingTests
+from Crypto.SelfTest.Cipher.test_CBC import BlockChainingTests
 
 
 def get_tag_random(tag, length):

@@ -28,16 +28,16 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.keccak"""
+"""Self-test suite for Crypto.Hash.keccak"""
 
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Hash import keccak
-from Cryptodome.Util.py3compat import b, tobytes, bchr
+from Crypto.Hash import keccak
+from Crypto.Util.py3compat import b, tobytes, bchr
 
 class KeccakTest(unittest.TestCase):
 

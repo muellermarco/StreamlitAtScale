@@ -1,10 +1,10 @@
 from typing import Dict, List, Union, Tuple, get_origin
+import logging
+from pandas import DataFrame
 
 from atscale.errors import atscale_errors
 from atscale.parsers import project_parser
-from pandas import DataFrame
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -100,20 +100,20 @@ def validate_by_type_hints(
                 missing_params.append(param)
 
     if missing_params and raise_err:
-        raise atscale_errors.UserError(f"Missing expected parameters {missing_params}")
+        raise ValueError(f"Missing expected parameters {missing_params}")
 
     if bad_params and raise_err:
         bad_param_str = "Incorrect parameter types passed: "
         for param in bad_params:
             bad_param_str += f"the {param[0]} parameter must be of type {param[1]}\n\t"
-        raise atscale_errors.UserError(bad_param_str)
+        raise ValueError(bad_param_str)
 
     return (missing_params, bad_params)
 
 
 def _validate_warehouse_id_parameter(
     atconn: "_Connection",
-    project_dict: dict = None,
+    project_dict: Dict = None,
     warehouse_id: str = None,
     dbconn_warehouse_id: str = None,
 ) -> str:
@@ -121,13 +121,13 @@ def _validate_warehouse_id_parameter(
     if parsed_id is not None:
         # if user passed a warehouse different from project
         if warehouse_id is not None and warehouse_id != parsed_id:
-            raise atscale_errors.UserError(
+            raise ValueError(
                 f"The passed warehouse_id parameter: '{warehouse_id}' does not match the warehouse set up with "
                 f"the project: '{parsed_id}'"
             )
         # if user passed a database connection with a warehouse different from project
         if dbconn_warehouse_id is not None and dbconn_warehouse_id != parsed_id:
-            raise atscale_errors.UserError(
+            raise ValueError(
                 f"The warehouse_id parameter in the passed database connection: '{dbconn_warehouse_id}' does not match the warehouse set up with "
                 f"the project: '{parsed_id}'"
             )
@@ -137,18 +137,18 @@ def _validate_warehouse_id_parameter(
         elif dbconn_warehouse_id is not None:
             warehouse_id = dbconn_warehouse_id
         else:  # no passed warehouse and no datasets in the model
-            raise atscale_errors.UserError(
+            raise ValueError(
                 "No warehouse is used in the project yet, warehouse_id can not be "
                 "inferred. Please pass a value for the warehouse_id parameter."
             )
     if warehouse_id not in [w["warehouse_id"] for w in atconn._get_connected_warehouses()]:
-        raise atscale_errors.UserError(f"Nonexistent warehouse_id: '{warehouse_id}'")
+        raise atscale_errors.ObjectNotFoundError(f"Nonexistent warehouse_id: '{warehouse_id}'")
     return warehouse_id
 
 
 def _validate_warehouse_connection(
     atconn: "_Connection",
-    project_dict: dict,
+    project_dict: Dict,
     dbconn: "SQLConnection",
 ) -> bool:
     project_datasets = project_parser.get_datasets(project_dict)
@@ -160,32 +160,7 @@ def _validate_warehouse_connection(
         if dbconn._verify(project_connection):
             return True
     msg = "The SQLConnection connects to a database that is not referenced by the given data_model."
-    raise atscale_errors.UserError(msg)
-
-
-def validate_required_params_not_none(
-    local_vars: dict,
-    inspection,
-):
-    """Errors if any parameters that are required according to the given inspection are None or not defined in the
-    local_vars dict"""
-    # list of all parameters names in order (optionals must come after required)
-    all_params = inspection[0]
-    # assume all required at first
-    param_name_list = all_params
-
-    # tuple of default values (for every optional parameter)
-    defaults = inspection[3]
-    # parameter has default if and only if its optional
-    if defaults:
-        param_name_list = all_params[: -len(defaults)]
-
-    param_names_none = [x for x in param_name_list if local_vars[x] is None]
-
-    if param_names_none:
-        raise ValueError(
-            f'The following required parameters are None: {", ".join(param_names_none)}'
-        )
+    raise ValueError(msg)
 
 
 def validate_all_expected_params_bulk(
@@ -265,7 +240,7 @@ def validate_all_expected_params_bulk(
                         f"\n\t\tThe following parameters had incorrect types {invalid_type_strings}"
                     )
 
-            raise atscale_errors.UserError(base_err_msg)
+            raise ValueError(base_err_msg)
 
     return errors_found
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  SelfTest/Util/test_generic.py: Self-test for the Cryptodome.Random.new() function
+#  SelfTest/Util/test_generic.py: Self-test for the Crypto.Random.new() function
 #
 # Written in 2008 by Dwayne C. Litzenberger <dlitz@dlitz.net>
 #
@@ -22,17 +22,17 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Random.new()"""
+"""Self-test suite for Crypto.Random.new()"""
 
 import sys
 import unittest
-from Cryptodome.Util.py3compat import b
+from Crypto.Util.py3compat import b
 
 class SimpleTest(unittest.TestCase):
     def runTest(self):
-        """Cryptodome.Random.new()"""
+        """Crypto.Random.new()"""
         # Import the Random module and try to use it
-        from Cryptodome import Random
+        from Crypto import Random
         randobj = Random.new()
         x = randobj.read(16)
         y = randobj.read(16)
@@ -50,7 +50,7 @@ class SimpleTest(unittest.TestCase):
         # vonmisesvariate(), paretovariate()
         # weibullvariate()
         # WichmannHill(), whseed(), SystemRandom()
-        from Cryptodome.Random import random
+        from Crypto.Random import random
         x = random.getrandbits(16*8)
         y = random.getrandbits(16*8)
         self.assertNotEqual(x, y)

@@ -1,14 +1,14 @@
 import getpass
+from typing import Dict
 import cryptocode
-import inspect
 import logging
 from pandas import DataFrame, read_sql_query
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
+from atscale.utils import validation_utils
 from atscale.errors import atscale_errors
 from atscale.db.sql_connection import SQLConnection
-from atscale.base.enums import PlatformType, PandasTableExistsActionType
-from atscale.utils import validation_utils
+from atscale.base import enums
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class Iris(SQLConnection):
     interactions with an Iris DB.
     """
 
-    platform_type: PlatformType = PlatformType.IRIS
+    platform_type_str: str = "iris"
 
     conversion_dict = {
         "<class 'numpy.int32'>": "INTEGER",
@@ -65,7 +65,7 @@ class Iris(SQLConnection):
         super().__init__(warehouse_id)
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self.username = username
         self.host = host
@@ -74,7 +74,7 @@ class Iris(SQLConnection):
         self.schema = schema
         self.port = port
         if password:
-            self._password = cryptocode.encrypt(password, self.platform_type.value)
+            self._password = cryptocode.encrypt(password, self.platform_type_str)
         else:
             self._password = None
 
@@ -97,7 +97,7 @@ class Iris(SQLConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._password = cryptocode.encrypt(value, self.platform_type.value)
+        self._password = cryptocode.encrypt(value, self.platform_type_str)
 
     @property
     def _database(self):
@@ -115,16 +115,16 @@ class Iris(SQLConnection):
         if not self._password:
             self._password = cryptocode.encrypt(
                 getpass.getpass(prompt="Please enter your IRIS password: "),
-                self.platform_type.value,
+                self.platform_type_str,
             )
-        password = cryptocode.decrypt(self._password, self.platform_type.value)
+        password = cryptocode.decrypt(self._password, self.platform_type_str)
         connection_url = f"DRIVER={self.driver};SERVER={self.host};PORT={self.port};DATABASE={self.namespace};UID={self.username};PWD={password}"
         return connection_url
 
     @staticmethod
     def _format_types(
         dataframe: DataFrame,
-    ) -> dict:
+    ) -> Dict:
         types = {}
         for i in dataframe.columns:
             if str(type(dataframe[i].loc[~dataframe[i].isnull()].iloc[0])) in Iris.conversion_dict:
@@ -135,10 +135,41 @@ class Iris(SQLConnection):
                 types[i] = Iris.conversion_dict["<class 'str'>"]
         return types
 
+    def submit_queries(
+        self,
+        query_list: list,
+    ) -> list:
+        inspection = getfullargspec(self.submit_queries)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        import pyodbc as po
+
+        results = []
+        with po.connect(self._get_connection_url(), autocommit=True) as connection:
+            for query in query_list:
+                results.append(read_sql_query(query, connection))
+        return results
+
+    def execute_statements(
+        self,
+        statement_list: list,
+    ):
+        inspection = getfullargspec(self.execute_statements)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # same implementation is in Synapse, so if you need to change one please change the other
+        import pyodbc as po
+
+        with po.connect(self.connection_string, autocommit=False) as connection:
+            with connection.cursor() as cursor:
+                for statement in statement_list:
+                    cursor.execute(statement)
+                    connection.commit()
+
     def _create_table(
         self,
         table_name: str,
-        types: dict,
+        types: Dict,
         cursor,
     ):
         # If the table exists we'll just let this fail and raise the appropriate exception.
@@ -155,11 +186,16 @@ class Iris(SQLConnection):
         self,
         table_name: str,
         dataframe: DataFrame,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         chunksize: int = 250,
     ):
         inspection = getfullargspec(self.write_df_to_db)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         import pyodbc
 
@@ -170,14 +206,14 @@ class Iris(SQLConnection):
             table_name=table_name, schema_name=self.schema, catalog_name=self.namespace
         ).fetchall()
         if len(tables) > 1:
-            raise ValueError(
+            raise atscale_errors.CollisionError(
                 f"{table_name} already exists in schema: {self.schema} for catalog: "
                 f"{self.catalog} with type {tables[0].asDict().get('TABLE_TYPE')} "
                 f"and must be dropped to create a table with the same name"
             )
         if len(tables) == 1:
             if tables[0].asDict().get("TABLE_TYPE") != "TABLE":
-                raise ValueError(
+                raise atscale_errors.CollisionError(
                     f"{table_name} already exists in schema: {self.schema} for catalog: "
                     f"{self.catalog} with type {tables[0].asDict().get('TABLE_TYPE')} and "
                     f"must be dropped to create a table with the same name"
@@ -186,14 +222,14 @@ class Iris(SQLConnection):
         else:
             exists = False
 
-        if exists and if_exists == PandasTableExistsActionType.FAIL:
-            raise Exception(
+        if exists and if_exists == enums.TableExistsAction.ERROR:
+            raise atscale_errors.CollisionError(
                 f"A table or view named: {table_name} already exists in schema: {self.schema}"
             )
 
         types = self._format_types(dataframe)
 
-        if exists and if_exists == PandasTableExistsActionType.REPLACE:
+        if exists and if_exists == enums.TableExistsAction.OVERWRITE:
             operation = f"DROP TABLE {self._create_table_path(table_name)}"
             cursor.execute(operation)
             self._create_table(table_name, types, cursor)
@@ -221,46 +257,6 @@ class Iris(SQLConnection):
         cursor.close()
         connection.close()
 
-    def execute_statements(
-        self,
-        statement_list: list,
-    ):
-        inspection = getfullargspec(self.execute_statements)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
-
-        # same implementation is in Synapse, so if you need to change one please change the other
-        import pyodbc as po
-
-        with po.connect(self.connection_string, autocommit=False) as connection:
-            with connection.cursor() as cursor:
-                for statement in statement_list:
-                    cursor.execute(statement)
-                    connection.commit()
-
-    def submit_query(
-        self,
-        query,
-    ):
-        # validate the non-null inputs
-        if query is None:
-            raise ValueError(f"The following required parameters are None: query")
-        return self.submit_queries([query])[0]
-
-    def submit_queries(
-        self,
-        query_list: list,
-    ) -> list:
-        inspection = getfullargspec(self.submit_queries)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
-
-        import pyodbc as po
-
-        results = []
-        with po.connect(self._get_connection_url(), autocommit=True) as connection:
-            for query in query_list:
-                results.append(read_sql_query(query, connection))
-        return results
-
     def _create_table_path(
         self,
         table_name: str,
@@ -274,3 +270,17 @@ class Iris(SQLConnection):
             str: the queriable location of the table
         """
         return f"{self._column_quote()}{self.namespace}{self._column_quote()}.{self._column_quote()}{self.schema}{self._column_quote()}.{self._column_quote()}{table_name}{self._column_quote()}"
+
+    @staticmethod
+    def _sql_expression_day_or_less(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"DATE({column_name})"
+
+    @staticmethod
+    def _sql_expression_week_or_more(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"DATEPART({sql_name}, {column_name})"

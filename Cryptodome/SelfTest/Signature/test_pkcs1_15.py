@@ -32,24 +32,24 @@ import json
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bchr
-from Cryptodome.Util.number import bytes_to_long
-from Cryptodome.Util.strxor import strxor
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
+from Crypto.Util.py3compat import bchr
+from Crypto.Util.number import bytes_to_long
+from Crypto.Util.strxor import strxor
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
 
-from Cryptodome.Hash import (SHA1, SHA224, SHA256, SHA384, SHA512, SHA3_384,
+from Crypto.Hash import (SHA1, SHA224, SHA256, SHA384, SHA512, SHA3_384,
                          SHA3_224, SHA3_256, SHA3_512)
-from Cryptodome.PublicKey import RSA
-from Cryptodome.Signature import pkcs1_15
-from Cryptodome.Signature import PKCS1_v1_5
+from Crypto.PublicKey import RSA
+from Crypto.Signature import pkcs1_15
+from Crypto.Signature import PKCS1_v1_5
 
-from Cryptodome.Util._file_system import pycryptodome_filename
-from Cryptodome.Util.strxor import strxor
+from Crypto.Util._file_system import pycryptodome_filename
+from Crypto.Util.strxor import strxor
 
 
 def load_hash_by_name(hash_name):
-    return __import__("Cryptodome.Hash." + hash_name, globals(), locals(), ["new"])
+    return __import__("Crypto.Hash." + hash_name, globals(), locals(), ["new"])
 
 
 class FIPS_PKCS1_Verify_Tests(unittest.TestCase):
@@ -175,12 +175,12 @@ class PKCS1_15_NoParams(unittest.TestCase):
 
 
 class PKCS1_Legacy_Module_Tests(unittest.TestCase):
-    """Verify that the legacy module Cryptodome.Signature.PKCS1_v1_5
+    """Verify that the legacy module Crypto.Signature.PKCS1_v1_5
     behaves as expected. The only difference is that the verify()
     method returns True/False and does not raise exceptions."""
 
     def shortDescription(self):
-        return "Test legacy Cryptodome.Signature.PKCS1_v1_5"
+        return "Test legacy Crypto.Signature.PKCS1_v1_5"
 
     def runTest(self):
         key = RSA.importKey(PKCS1_15_NoParams.rsakey)
@@ -212,7 +212,7 @@ class PKCS1_All_Hashes_Tests(unittest.TestCase):
             hashed = load_hash_by_name(name).new(b"Test")
             signer.sign(hashed)
 
-        from Cryptodome.Hash import BLAKE2b, BLAKE2s
+        from Crypto.Hash import BLAKE2b, BLAKE2s
         for hash_size in (20, 32, 48, 64):
             hashed_b = BLAKE2b.new(digest_bytes=hash_size, data=b"Test")
             signer.sign(hashed_b)

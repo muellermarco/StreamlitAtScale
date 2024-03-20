@@ -33,10 +33,10 @@
 :undocumented: __package__
 """
 
-from Cryptodome import Random
-from Cryptodome.Math.Numbers import Integer
+from Crypto import Random
+from Crypto.Math.Numbers import Integer
 
-from Cryptodome.Util.py3compat import iter_range
+from Crypto.Util.py3compat import iter_range
 
 COMPOSITE = 0
 PROBABLY_PRIME = 1
@@ -213,7 +213,7 @@ def lucas_test(candidate):
     return COMPOSITE
 
 
-from Cryptodome.Util.number import sieve_base as _sieve_base_large
+from Crypto.Util.number import sieve_base as _sieve_base_large
 ## The optimal number of small primes to use for the sieve
 ## is probably dependent on the platform and the candidate size
 _sieve_base = set(_sieve_base_large[:100])

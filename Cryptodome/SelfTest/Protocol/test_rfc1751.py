@@ -1,5 +1,5 @@
 #
-# Test script for Cryptodome.Util.RFC1751.
+# Test script for Crypto.Util.RFC1751.
 #
 # Part of the Python Cryptography Toolkit
 #
@@ -27,8 +27,8 @@ __revision__ = "$Id$"
 
 import binascii
 import unittest
-from Cryptodome.Util import RFC1751
-from Cryptodome.Util.py3compat import *
+from Crypto.Util import RFC1751
+from Crypto.Util.py3compat import *
 
 test_data = [('EB33F77EE73D4053', 'TIDE ITCH SLOW REIN RULE MOT'),
              ('CCAC2AED591056BE4F90FD441C534766',

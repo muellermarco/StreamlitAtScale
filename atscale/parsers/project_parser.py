@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Dict, List
 
+from atscale.errors import atscale_errors
 from atscale.parsers import dictionary_parser, data_model_parser
 
 # the built in datetime.fromisoformat seems to fail so manually writing an iso format constant
@@ -8,7 +9,7 @@ isoformat = "%Y-%m-%dT%H:%M:%S.%f%z"
 
 
 def parse_engineid_for_project(
-    project_dict: dict,
+    project_dict: Dict,
 ) -> str:
     # make sure annotations exist
     tmp = project_dict.get("annotations", {})
@@ -34,27 +35,27 @@ def parse_engineid_for_project(
 def parse_published_project_by_id(
     published_project_list: list,
     published_project_id: str,
-) -> dict:
+) -> Dict:
     return dictionary_parser.parse_dict_list(published_project_list, "id", published_project_id)
 
 
 def parse_published_project_by_name(
     published_project_list: list,
     published_project_name: str,
-) -> dict:
+) -> Dict:
     return dictionary_parser.parse_dict_list(published_project_list, "name", published_project_name)
 
 
 def parse_published_projects_for_project(
-    project_dict: dict,
+    project_dict: Dict,
     published_project_list: list,
     include_soft_publish: bool = False,
 ) -> list:
     project_engine_id = parse_engineid_for_project(project_dict)
     filtered_published_projects = []
     for published_project in published_project_list:
-        if published_project["linkedProjectId"] == project_engine_id:
-            if not include_soft_publish and published_project["publishType"] == "soft_publish":
+        if published_project.get("linkedProjectId") == project_engine_id:
+            if not include_soft_publish and published_project.get("publishType") == "soft_publish":
                 continue
             filtered_published_projects.append(published_project)
     return filtered_published_projects
@@ -62,7 +63,7 @@ def parse_published_projects_for_project(
 
 def parse_most_recent_published_project(
     published_project_list: list,
-) -> dict:
+) -> Dict:
     if published_project_list is None or len(published_project_list) < 1:
         return None
     # start with the first published project
@@ -70,10 +71,10 @@ def parse_most_recent_published_project(
     num_pubs = len(published_project_list)
     if num_pubs < 2:
         return published_project
-    publish_date = datetime.strptime(published_project["publishedAt"], isoformat)
+    publish_date = datetime.strptime(published_project["publishedAt"][:26] + "Z", isoformat)
     for i in range(1, num_pubs, 1):
         tmp_project = published_project_list[i]
-        tmp_date = datetime.strptime(tmp_project.get("publishedAt"), isoformat)
+        tmp_date = datetime.strptime(tmp_project.get("publishedAt")[:26] + "Z", isoformat)
         if tmp_date is not None and tmp_date > publish_date:
             publish_date = tmp_date
             published_project = tmp_project
@@ -81,9 +82,9 @@ def parse_most_recent_published_project(
 
 
 def parse_most_recent_published_project_for_project(
-    project_dict: dict,
+    project_dict: Dict,
     published_project_list: list,
-) -> dict:
+) -> Dict:
     # mashup of the two functions above this
     filtered_published_project_list = parse_published_projects_for_project(
         project_dict, published_project_list, include_soft_publish=False
@@ -92,8 +93,8 @@ def parse_most_recent_published_project_for_project(
 
 
 def verify_published_project_dict_against_project_dict(
-    project_dict: dict,
-    published_project_dict: dict,
+    project_dict: Dict,
+    published_project_dict: Dict,
 ) -> bool:
     engine_id = parse_engineid_for_project(project_dict)
     if published_project_dict.get("linkedProjectId") == engine_id:
@@ -108,34 +109,32 @@ def verify_published_project_dict_against_project_dict(
 
 
 def get_cubes(
-    project_dict: dict,
-) -> list:
+    project_dict: Dict,
+) -> List:
     """Grabs all cubes from a project
     Args:
-        project (dict): a complete draft project specification
+        project (Dict): a complete draft project specification
     Returns:
-        list:  List of all cubes(dict object) in the project, may be empty if none are found.
+        List:  List of all cubes(Dict object) in the project, may be empty if none are found.
     """
-    cubes = project_dict.setdefault("cubes", {})
-    cube = cubes.setdefault("cube", [])
-    return cube
+    return project_dict.get("cubes", {}).get("cube", [])
 
 
 def get_cube(
-    project_dict: dict,
+    project_dict: Dict,
     id: str,
-) -> dict:
+) -> Dict:
     """Searches the project dict to retrieve the cube associated with the provided cube id. When working with a
     perspective, be sure to use the cube_id rather than the data model id since the data_model.id will return the id of
     the perspective while data_model.cube_id will return the id of the associated cube that the perspective is
     restrictively viewing.
 
     Args:
-        project (dict): draft project dict
+        project (Dict): draft project dict
         id (str): id for the cube to retrieve
 
     Returns:
-        dict: dict for the cube for the provided id or None if one isn't found.
+        Dict: Dict for the cube for the provided id or None if one isn't found.
     """
     cubes = get_cubes(project_dict)
     for cube in cubes:
@@ -145,31 +144,29 @@ def get_cube(
 
 
 def get_perspectives(
-    project_dict: dict,
-) -> list:
+    project_dict: Dict,
+) -> List:
     """Gets all perspectives from a project as a list of dictionaries.
     Args:
-        project (dict): a complete draft project specification.
+        project (Dict): a complete draft project specification.
     Returns:
-        list: list of perspectives, may be empty if none are found.
+        List: list of perspectives, may be empty if none are found.
     """
-    perspectives = project_dict.setdefault("perspectives", {})
-    perspective = perspectives.setdefault("perspective", [])
-    return perspective
+    return project_dict.get("perspectives", {}).get("perspective", [])
 
 
 def get_perspective(
-    project_dict: dict,
+    project_dict: Dict,
     id: str,
-) -> dict:
+) -> Dict:
     """Searches the project dict to retrieve the perspective associated with the provided id.
 
     Args:
-        project (dict): draft project dict
+        project (Dict): draft project dict
         id (str): id for the perspective to retrieve
 
     Returns:
-        dict: dict for the perspective for the provided id or None if one isn't found.
+        Dict: Dict for the perspective for the provided id or None if one isn't found.
     """
     perspectives = get_perspectives(project_dict)
     for perspective in perspectives:
@@ -179,28 +176,25 @@ def get_perspective(
 
 
 def get_data_models(
-    project_dict: dict,
-) -> list:
+    project_dict: Dict,
+) -> List:
     """Return all data models (cubes or perspectives) associated with a project.
 
     Args:
-        project (dict): the dict representation of a project.
+        project (Dict): the dict representation of a project.
 
     Returns:
-        list: all data models associated with a project, may be empty if none are found.
+        List: all data models associated with a project, may be empty if none are found.
     """
     return get_cubes(project_dict) + get_perspectives(project_dict)
 
 
 def get_data_model(
-    project_dict: dict,
+    project_dict: Dict,
     id: str,
-) -> dict:
+) -> Dict:
     data_models = get_data_models(project_dict)
-    for data_model in data_models:
-        if data_model.get("id") == id:
-            return data_model
-    return {}
+    return dictionary_parser._find_by_id_or_name(data_models, item_id=id)
 
 
 # ######################################################################################################################
@@ -209,10 +203,10 @@ def get_data_model(
 
 
 def get_dataset(
-    project_dict: dict,
+    project_dict: Dict,
     dataset_id: str = None,
     dataset_name: str = None,
-) -> dict:
+) -> Dict:
     dset_list = get_datasets(project_dict=project_dict)
     return dictionary_parser._find_by_id_or_name(
         item_list=dset_list, item_id=dataset_id, item_name=dataset_name
@@ -220,24 +214,23 @@ def get_dataset(
 
 
 def get_datasets(
-    project_dict: dict,
-) -> list:
+    project_dict: Dict,
+) -> List:
     """Grabs the datasets out of a project dict.
 
     Args:
-        project_dict (dict): a dict describing a project
+        project_dict (Dict): a dict describing a project
 
     Returns:
-        list: list of dictionaries, each describing a dataset
+        List: list of dictionaries, each describing a dataset
     """
     if project_dict is None:
         return []
-    ds_dict = project_dict.setdefault("datasets", {})
-    return ds_dict.setdefault("data-set", [])
+    return project_dict.get("datasets", {}).get("data-set", [])
 
 
 def find_dataset_with_table(
-    datasets: list,
+    datasets: List[Dict],
     table_name: str,
     database: str = None,
     schema: str = None,
@@ -245,7 +238,7 @@ def find_dataset_with_table(
     """Looks through the provided datasets for one that contains the given table_name
 
     Args:
-        datasets (list[dict]): The datasets to look for the table in
+        datasets (list[Dict]): The datasets to look for the table in
         database (str): The database that the table exists in
         schema (str): The schema that the table exists in
         table_name (str): The name of the table to look for
@@ -274,7 +267,9 @@ def find_dataset_with_table(
     if len(matching_dsets) == 1:
         return matching_dsets[0].get("id")
     elif len(matching_dsets) > 1:
-        raise Exception(f"Could not identify targeted table out of tables: {matching_dsets}")
+        raise atscale_errors.ObjectNotFoundError(
+            f"Could not identify targeted table out of tables: {matching_dsets}"
+        )
     else:
         return None
 
@@ -285,14 +280,14 @@ def find_dataset_with_table(
 
 
 def get_project_warehouse(
-    project_dict: dict,
+    project_dict: Dict,
 ) -> str:
     datasets = get_datasets(project_dict)
     warehouse_id = None
     if len(datasets) > 0:
         physicalList = datasets[0].get("physical")
         if physicalList:
-            warehouse_id = physicalList.get("connection")["id"]
+            warehouse_id = physicalList.get("connection").get("id")
     return warehouse_id
 
 
@@ -300,16 +295,15 @@ def get_connection_by_id(
     connections: list,
     connection_id: str,
 ):
-    for con in connections:
-        if con.get("connectionId") == connection_id:
-            return con
-    return {}
+    return dictionary_parser._find_by_id_or_name(
+        connections, item_id=connection_id, id_key="connectionId"
+    )
 
 
 def get_connection_list_for_project_datasets(
     project_datasets: list,
     connections: list,
-) -> list:
+) -> List:
     """Finds the connection associated with each project_data set and constructs a list of them in the same order
     such that project_dataset[i] references connections[i]. Note, connections may repeat in the returned list as
     more than one project dataset may refer to the same connection.
@@ -319,12 +313,12 @@ def get_connection_list_for_project_datasets(
         connections (list): connection group connections from the org
 
     Returns:
-        list: a list of connections corresponding to each data set in project_datasets
+        List: a list of connections corresponding to each data set in project_datasets
     """
     project_connections = []
     for project_dataset in project_datasets:
         # If these indexes don't exist somethign went wrong, will trigger an exception
-        conn_id = project_dataset["physical"]["connection"]["id"]
+        conn_id = project_dataset["physical"].get("connection", {}).get("id")
         project_connections.append(get_connection_by_id(connections, conn_id))
     return project_connections
 
@@ -335,24 +329,23 @@ def get_connection_list_for_project_datasets(
 
 
 def _get_calculated_members(
-    project_dict: dict,
+    project_dict: Dict,
 ) -> List[Dict]:
     """Grabs the calculated members out of a project dict.
 
     Args:
-        project_dict (dict): a dict describing a calculated members
+        project_dict (Dict): a dict describing a calculated members
 
     Returns:
-        list: list of dictionaries describing the calculated members
+        List[Dict]: list of dictionaries describing the calculated members
     """
     if project_dict is None:
         return []
-    mem_dict = project_dict.setdefault("calculated-members", {})
-    return mem_dict.setdefault("calculated-member", [])
+    return project_dict.get("calculated-members", {}).get("calculated-member", [])
 
 
 def _get_query_names_from_value_columns(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     value_columns: List[str],
 ):
@@ -397,7 +390,7 @@ def _get_query_names_from_value_columns(
 
 
 def _get_multi_key_query_names_from_features(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     feature_list: List[str],
 ) -> Dict[str, List[str]]:
@@ -412,7 +405,7 @@ def _get_multi_key_query_names_from_features(
         Dict[str,List[str]]: Dict of {provided feature_name}:[{missing feature_name}] pairs
     """
     # get the dict of features: {'key_cols]}
-    feature_key_list: dict = _get_feature_keys(
+    feature_key_list: Dict = _get_feature_keys(
         project_dict=project_dict, cube_id=cube_id, join_features=feature_list
     )
     cols_to_map_list_of_list = [
@@ -426,14 +419,14 @@ def _get_multi_key_query_names_from_features(
 
     # the return value should be feature: [list of query names making up key]
     ret_dict = {}
-    for feature in feature_key_list.keys():
-        ret_dict[feature] = [query_names_to_map[x] for x in feature_key_list[feature]["key_cols"]]
+    for key, val in feature_key_list.items():
+        ret_dict[key] = [query_names_to_map[x] for x in val.get("key_cols")]
 
     return ret_dict
 
 
 def _get_feature_keys(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     join_features: List[str],
 ):

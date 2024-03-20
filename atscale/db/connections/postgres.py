@@ -1,11 +1,10 @@
 import getpass
 import cryptocode
-import inspect
+from inspect import getfullargspec
 import logging
 
 from atscale.errors import atscale_errors
 from atscale.db.sqlalchemy_connection import SQLAlchemyConnection
-from atscale.base.enums import PlatformType
 from atscale.utils import validation_utils
 
 logger = logging.getLogger(__name__)
@@ -16,7 +15,7 @@ class Postgres(SQLAlchemyConnection):
     interactions with a Postgres DB.
     """
 
-    platform_type: PlatformType = PlatformType.POSTGRES
+    platform_type_str: str = "postgresql"
 
     def __init__(
         self,
@@ -49,11 +48,8 @@ class Postgres(SQLAlchemyConnection):
         super().__init__(warehouse_id)
 
         # ensure any builder didn't pass any required parameters as None
-        local_vars = locals()
-        inspection = inspect.getfullargspec(self.__init__)
-        validation_utils.validate_required_params_not_none(
-            local_vars=local_vars, inspection=inspection
-        )
+        inspection = getfullargspec(self.__init__)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._username = username
         self._host = host
@@ -61,7 +57,7 @@ class Postgres(SQLAlchemyConnection):
         self._schema = schema
         self._port = port
         if password:
-            self._password = cryptocode.encrypt(password, self.platform_type.value)
+            self._password = cryptocode.encrypt(password, self.platform_type_str)
         else:
             self._password = None
 
@@ -160,7 +156,7 @@ class Postgres(SQLAlchemyConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._password = cryptocode.encrypt(value, self.platform_type.value)
+        self._password = cryptocode.encrypt(value, self.platform_type_str)
         self.dispose_engine()
 
     def clear_auth(self):
@@ -168,15 +164,19 @@ class Postgres(SQLAlchemyConnection):
         self._password = None
         self.dispose_engine()
 
+    @staticmethod
+    def _column_quote():
+        return '"'
+
     def _get_connection_url(self):
         from sqlalchemy.engine import URL
 
         if not self._password:
             self._password = cryptocode.encrypt(
                 getpass.getpass(prompt="Please enter your password for Postgres: "),
-                self.platform_type.value,
+                self.platform_type_str,
             )
-        password = cryptocode.decrypt(self._password, self.platform_type.value)
+        password = cryptocode.decrypt(self._password, self.platform_type_str)
         connection_url = URL.create(
             "postgresql",
             username=self._username,

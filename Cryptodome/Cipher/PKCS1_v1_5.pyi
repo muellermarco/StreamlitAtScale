@@ -1,6 +1,6 @@
 from typing import Callable, Union, Any, Optional, TypeVar
 
-from Cryptodome.PublicKey.RSA import RsaKey
+from Crypto.PublicKey.RSA import RsaKey
 
 Buffer = Union[bytes, bytearray, memoryview]
 T = TypeVar('T')

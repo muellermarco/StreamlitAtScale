@@ -23,9 +23,9 @@
 import unittest
 import re
 
-from Cryptodome.PublicKey import DSA
-from Cryptodome.SelfTest.st_common import *
-from Cryptodome.Util.py3compat import *
+from Crypto.PublicKey import DSA
+from Crypto.SelfTest.st_common import *
+from Crypto.Util.py3compat import *
 
 from binascii import unhexlify
 

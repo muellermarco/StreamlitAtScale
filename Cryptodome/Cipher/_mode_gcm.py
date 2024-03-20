@@ -36,19 +36,19 @@ __all__ = ['GcmMode']
 
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bord, _copy_bytes
+from Crypto.Util.py3compat import bord, _copy_bytes
 
-from Cryptodome.Util._raw_api import is_buffer
+from Crypto.Util._raw_api import is_buffer
 
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long
-from Cryptodome.Hash import BLAKE2s
-from Cryptodome.Random import get_random_bytes
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Hash import BLAKE2s
+from Crypto.Random import get_random_bytes
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
                                   create_string_buffer, get_raw_buffer,
                                   SmartPointer, c_size_t, c_uint8_ptr)
 
-from Cryptodome.Util import _cpu_features
+from Crypto.Util import _cpu_features
 
 
 # C API by module implementing GHASH
@@ -78,7 +78,7 @@ def _build_impl(lib, postfix):
 
 def _get_ghash_portable():
     api = _ghash_api_template.replace("%imp%", "portable")
-    lib = load_pycryptodome_raw_lib("Cryptodome.Hash._ghash_portable", api)
+    lib = load_pycryptodome_raw_lib("Crypto.Hash._ghash_portable", api)
     result = _build_impl(lib, "portable")
     return result
 _ghash_portable = _get_ghash_portable()
@@ -91,7 +91,7 @@ def _get_ghash_clmul():
         return None
     try:
         api = _ghash_api_template.replace("%imp%", "clmul")
-        lib = load_pycryptodome_raw_lib("Cryptodome.Hash._ghash_clmul", api)
+        lib = load_pycryptodome_raw_lib("Crypto.Hash._ghash_clmul", api)
         result = _build_impl(lib, "clmul")
     except OSError:
         result = None
@@ -573,9 +573,9 @@ def _create_gcm_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        A block cipher module, taken from `Cryptodome.Cipher`.
+        A block cipher module, taken from `Crypto.Cipher`.
         The cipher must have block length of 16 bytes.
-        GCM has been only defined for `Cryptodome.Cipher.AES`.
+        GCM has been only defined for `Crypto.Cipher.AES`.
 
     :Keywords:
       key : bytes/bytearray/memoryview

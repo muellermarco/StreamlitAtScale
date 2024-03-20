@@ -35,23 +35,23 @@
 
 import unittest
 
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   create_string_buffer,
                                   get_raw_buffer,
                                   c_size_t,
                                   c_ulonglong)
 
-from Cryptodome.Hash import SHAKE128
-from Cryptodome.Math.Numbers import Integer
-from Cryptodome.Math._IntegerCustom import _raw_montgomery
+from Crypto.Hash import SHAKE128
+from Crypto.Math.Numbers import Integer
+from Crypto.Math._IntegerCustom import _raw_montgomery
 
-from Cryptodome.Random.random import StrongRandom
+from Crypto.Random.random import StrongRandom
 
 
 def create_rng(tag):

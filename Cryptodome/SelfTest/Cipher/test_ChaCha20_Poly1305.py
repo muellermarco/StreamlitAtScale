@@ -31,13 +31,13 @@
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors_wycheproof
-from Cryptodome.Util.py3compat import tobytes
-from Cryptodome.Cipher import ChaCha20_Poly1305
-from Cryptodome.Hash import SHAKE128
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors_wycheproof
+from Crypto.Util.py3compat import tobytes
+from Crypto.Cipher import ChaCha20_Poly1305
+from Crypto.Hash import SHAKE128
 
-from Cryptodome.Util.strxor import strxor
+from Crypto.Util.strxor import strxor
 
 
 def get_tag_random(tag, length):
@@ -160,7 +160,7 @@ class ChaCha20Poly1305Tests(unittest.TestCase):
         self.assertEqual(len(mac), 16)
 
     def test_invalid_mac(self):
-        from Cryptodome.Util.strxor import strxor_c
+        from Crypto.Util.strxor import strxor_c
         cipher = ChaCha20_Poly1305.new(key=self.key_256,
                                        nonce=self.nonce_96)
         ct, mac = cipher.encrypt_and_digest(self.data_128)

@@ -1,19 +1,15 @@
 import datetime
-import inspect
 import json
 import re
 import logging
 from typing import Dict, List, Tuple
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
+from atscale.utils import validation_utils, model_utils
 from atscale.errors import atscale_errors
-from atscale.base import config
+from atscale.base import config, enums, endpoints
 from atscale.parsers import project_parser
 from atscale.data_model import data_model_helpers
-from atscale.utils import model_utils
-from atscale.utils import validation_utils
-from atscale.base.enums import RequestType, FeatureType, CheckFeaturesErrMsg
-from atscale.base import endpoints
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +75,7 @@ def _generate_atscale_query(
     Returns:
         str: An AtScale query string
     """
-    inspection = inspect.getfullargspec(_generate_atscale_query)
+    inspection = getfullargspec(_generate_atscale_query)
     validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
     filter_equals = {} if filter_equals is None else filter_equals
@@ -115,7 +111,7 @@ def _generate_atscale_query(
             ordering_features.append(maybe_tuple[0])
 
     if error_items:
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"All items in the order_by parameter must be a tuple of a "
             f'feature name then "ASC" or "DESC". The following do not '
             f"comply: {error_items}"
@@ -129,7 +125,7 @@ def _generate_atscale_query(
     model_utils._check_features(
         features=feature_list,
         check_list=list_all,
-        errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
+        errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
     )
 
     deduped_feature_list = []  # need to remove duplicates before sending to engine
@@ -158,7 +154,7 @@ def _generate_atscale_query(
             project_dict=project_dict,
             data_model_name=data_model.name,
             feature_list=feature_list,
-            feature_type=FeatureType.CATEGORICAL,
+            feature_type=enums.FeatureType.CATEGORICAL,
         )
         features_to_validate = {
             key: value.get("base_name", key) for key, value in categoricals.items()
@@ -199,7 +195,7 @@ def _generate_atscale_query(
         model_utils._check_features(
             features=param,
             check_list=list_all,
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
         )
 
     if ordering_strings:
@@ -208,7 +204,7 @@ def _generate_atscale_query(
         categorical_columns = [
             f"`{name}`"
             for name in feature_list
-            if all_features[name]["feature_type"].upper() == FeatureType.CATEGORICAL.name
+            if all_features[name]["feature_type"].upper() == enums.FeatureType.CATEGORICAL.name
         ]
         order_string = f' ORDER BY {", ".join(categorical_columns)}' if categorical_columns else ""
 
@@ -364,30 +360,30 @@ def _generate_db_query(
     """Submits an AtScale query to the query planner and grabs the outbound query to the database which is returned.
 
     Args:
-        data_model (DataModel): an atscale DataModel object
+        data_model (DataModel): an AtScale DataModel object
         atscale_query (str): an SQL query that references the atscale semantic layer (rather than the backing data warehouse)
         use_aggs (bool, optional): Whether to allow the query to use aggs. Defaults to True.
         gen_aggs (bool, optional): Whether to allow the query to generate aggs. Defaults to True.
         timeout (int, optional): The number of minutes to wait for a response before timing out. Defaults to 10.
 
     Returns:
-        str: the query that atscale would send to the backing data warehouse given the atscale_query sent to atscale
+        str: the query that AtScale would send to the backing data warehouse given the atscale_query sent to atscale
     """
 
     inspection = getfullargspec(_generate_db_query)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
     # we'll keep track of any comment so it can be added to the outbound query that is returned
     comment_match = re.findall(r"/\*.+?\*/", atscale_query)
 
-    # we use a time stamp around the time we submit the query, to then query atscale to
+    # we use a time stamp around the time we submit the query, to then query AtScale to
     # try and get back the query it actually submitted to the backing data warehouse
     now = datetime.datetime.utcnow()  # current date and time
-    now = now - datetime.timedelta(minutes=5)
+    now = now - datetime.timedelta(minutes=1)
 
     date_time = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
-    # Post the rest query through atscale. No return value, we have to dig through logs to see what it was later
+    # Post the rest query through AtScale. No return value, we have to dig through logs to see what it was later
     atconn = data_model.project._atconn
     published_project_name = data_model.project.published_project_name
 
@@ -400,11 +396,9 @@ def _generate_db_query(
         timeout=timeout,
     )
 
-    url = endpoints._endpoint_query_view(
-        atconn=atconn, suffix=f"&querySource=user&queryStarted=5m&queryDateTimeStart={date_time}"
-    )
+    url = endpoints._endpoint_query_view_recent_queries(atconn=atconn, date_time=date_time)
 
-    response = atconn._submit_request(request_type=RequestType.GET, url=url)
+    response = atconn._submit_request(request_type=enums.RequestType.GET, url=url)
     json_data = json.loads(response.content)["response"]
     db_query = ""
 
@@ -418,12 +412,14 @@ def _generate_db_query(
                 if event["type"] == "SubqueriesWall":
                     # check if it was truncated
                     if event["children"][0]["query_text_truncated"]:
-                        url = endpoints._endpoint_design_private_org(
+                        url = endpoints._endpoint_design_private_org_full_query(
                             atconn=atconn,
-                            suffix=f'/fullquerytext/queryId/{query_info["query_id"]}'
-                            f'?subquery={event["children"][0]["query_id"]}',
+                            query_id=query_info["query_id"],
+                            sub_query_id=event["children"][0]["query_id"],
                         )
-                        response = atconn._submit_request(request_type=RequestType.GET, url=url)
+                        response = atconn._submit_request(
+                            request_type=enums.RequestType.GET, url=url
+                        )
                         db_query = response.text
                     else:
                         db_query = event["children"][0]["query_text"]

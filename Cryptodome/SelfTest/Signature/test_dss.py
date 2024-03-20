@@ -35,15 +35,15 @@ import re
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.Util.py3compat import tobytes, bord, bchr
+from Crypto.Util.py3compat import tobytes, bord, bchr
 
-from Cryptodome.Hash import (SHA1, SHA224, SHA256, SHA384, SHA512,
+from Crypto.Hash import (SHA1, SHA224, SHA256, SHA384, SHA512,
                          SHA3_224, SHA3_256, SHA3_384, SHA3_512)
-from Cryptodome.Signature import DSS
-from Cryptodome.PublicKey import DSA, ECC
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
-from Cryptodome.Util.number import bytes_to_long, long_to_bytes
+from Crypto.Signature import DSS
+from Crypto.PublicKey import DSA, ECC
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
+from Crypto.Util.number import bytes_to_long, long_to_bytes
 
 
 def t2b(hexstring):
@@ -57,7 +57,7 @@ def t2l(hexstring):
 
 
 def load_hash_by_name(hash_name):
-    return __import__("Cryptodome.Hash." + hash_name, globals(), locals(), ["new"])
+    return __import__("Crypto.Hash." + hash_name, globals(), locals(), ["new"])
 
 
 class StrRNG:
@@ -100,7 +100,7 @@ class FIPS_DSA_Tests(unittest.TestCase):
     def test_negative_unapproved_hashes(self):
         """Verify that unapproved hashes are rejected"""
 
-        from Cryptodome.Hash import RIPEMD160
+        from Crypto.Hash import RIPEMD160
 
         self.description = "Unapproved hash (RIPEMD160) test"
         hash_obj = RIPEMD160.new()
@@ -243,7 +243,7 @@ class FIPS_ECDSA_Tests(unittest.TestCase):
     def test_negative_unapproved_hashes(self):
         """Verify that unapproved hashes are rejected"""
 
-        from Cryptodome.Hash import SHA1
+        from Crypto.Hash import SHA1
 
         self.description = "Unapproved hash (SHA-1) test"
         hash_obj = SHA1.new()

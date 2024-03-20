@@ -22,13 +22,13 @@
 
 import sys
 
-from Cryptodome.Cipher import _create_cipher
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Cipher import _create_cipher
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   c_size_t, c_uint8_ptr)
 
-from Cryptodome.Util import _cpu_features
-from Cryptodome.Random import get_random_bytes
+from Crypto.Util import _cpu_features
+from Crypto.Random import get_random_bytes
 
 MODE_ECB = 1        #: Electronic Code Book (:ref:`ecb_mode`)
 MODE_CBC = 2        #: Cipher-Block Chaining (:ref:`cbc_mode`)
@@ -60,14 +60,14 @@ _cproto = """
 
 
 # Load portable AES
-_raw_aes_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_aes",
+_raw_aes_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_aes",
                                          _cproto)
 
 # Try to load AES with AES NI instructions
 try:
     _raw_aesni_lib = None
     if _cpu_features.have_aes_ni():
-        _raw_aesni_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_aesni",
+        _raw_aesni_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_aesni",
                                                    _cproto.replace("AES",
                                                                    "AESNI"))
 # _raw_aesni may not have been compiled in
@@ -213,7 +213,7 @@ def new(key, mode, *args, **kwargs):
 
       counter (object):
         (Only ``MODE_CTR``).
-        Instance of ``Cryptodome.Util.Counter``, which allows full customization
+        Instance of ``Crypto.Util.Counter``, which allows full customization
         of the counter block. This parameter is incompatible to both ``nonce``
         and ``initial_value``.
 

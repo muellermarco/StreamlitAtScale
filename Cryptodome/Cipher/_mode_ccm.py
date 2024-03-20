@@ -37,15 +37,15 @@ __all__ = ['CcmMode']
 import struct
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import (byte_string, bord,
+from Crypto.Util.py3compat import (byte_string, bord,
                                    _copy_bytes)
-from Cryptodome.Util._raw_api import is_writeable_buffer
+from Crypto.Util._raw_api import is_writeable_buffer
 
-from Cryptodome.Util.strxor import strxor
-from Cryptodome.Util.number import long_to_bytes
+from Crypto.Util.strxor import strxor
+from Crypto.Util.number import long_to_bytes
 
-from Cryptodome.Hash import BLAKE2s
-from Cryptodome.Random import get_random_bytes
+from Crypto.Hash import BLAKE2s
+from Crypto.Random import get_random_bytes
 
 
 def enum(**enums):
@@ -603,8 +603,8 @@ def _create_ccm_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        A symmetric cipher module from `Cryptodome.Cipher` (like
-        `Cryptodome.Cipher.AES`).
+        A symmetric cipher module from `Crypto.Cipher` (like
+        `Crypto.Cipher.AES`).
 
     :Keywords:
       key : bytes/bytearray/memoryview

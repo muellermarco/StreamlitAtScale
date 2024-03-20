@@ -36,7 +36,7 @@ Legacy module for PKCS#1 v1.5 signatures.
 
 import types
 
-from Cryptodome.Signature import pkcs1_15
+from Crypto.Signature import pkcs1_15
 
 def _pycrypto_verify(self, hash_object, signature):
     try:

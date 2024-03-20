@@ -36,7 +36,7 @@ Legacy module for PKCS#1 PSS signatures.
 
 import types
 
-from Cryptodome.Signature import pss
+from Crypto.Signature import pss
 
 
 def _pycrypto_verify(self, hash_object, signature):

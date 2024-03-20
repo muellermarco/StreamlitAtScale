@@ -22,11 +22,11 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.MD4"""
+"""Self-test suite for Crypto.Hash.MD4"""
 
 __revision__ = "$Id$"
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 # This is a list of (expected_result, input[, description]) tuples.
 test_data = [
@@ -50,7 +50,7 @@ test_data = [
 ]
 
 def get_tests(config={}):
-    from Cryptodome.Hash import MD4
+    from Crypto.Hash import MD4
     from .common import make_hash_tests
     return make_hash_tests(MD4, "MD4", test_data,
         digest_size=16,

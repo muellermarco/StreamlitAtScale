@@ -1,7 +1,7 @@
 from typing import Optional, Union, Callable, Any, overload
 from typing_extensions import Protocol
 
-from Cryptodome.PublicKey.RSA import RsaKey
+from Crypto.PublicKey.RSA import RsaKey
 
 class HashLikeClass(Protocol):
     digest_size : int

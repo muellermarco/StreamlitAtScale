@@ -22,17 +22,17 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.DES3"""
+"""Self-test suite for Crypto.Cipher.DES3"""
 
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.Cipher import DES3
+from Crypto.Cipher import DES3
 
-from Cryptodome.Util.strxor import strxor_c
-from Cryptodome.Util.py3compat import bchr, tostr
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.strxor import strxor_c
+from Crypto.Util.py3compat import bchr, tostr
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
 
 # This is a list of (plaintext, ciphertext, key, description) tuples.
 test_data = [

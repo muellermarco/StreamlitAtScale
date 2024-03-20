@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  SelfTest/Hash/common.py: Common code for Cryptodome.SelfTest.Hash
+#  SelfTest/Hash/common.py: Common code for Crypto.SelfTest.Hash
 #
 # Written in 2008 by Dwayne C. Litzenberger <dlitz@dlitz.net>
 #
@@ -22,16 +22,16 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-testing for PyCryptodome hash modules"""
+"""Self-testing for PyCrypto hash modules"""
 
 import re
 import sys
 import unittest
 import binascii
-import Cryptodome.Hash
+import Crypto.Hash
 from binascii import hexlify, unhexlify
-from Cryptodome.Util.py3compat import b, tobytes
-from Cryptodome.Util.strxor import strxor_c
+from Crypto.Util.py3compat import b, tobytes
+from Crypto.Util.strxor import strxor_c
 
 def t2b(hex_string):
     shorter = re.sub(br'\s+', b'', tobytes(hex_string))
@@ -97,7 +97,7 @@ class HashSelfTest(unittest.TestCase):
         # Verify that the .new() method produces a fresh hash object, except
         # for MD5 and SHA1, which are hashlib objects.  (But test any .new()
         # method that does exist.)
-        if self.hashmod.__name__ not in ('Cryptodome.Hash.MD5', 'Cryptodome.Hash.SHA1') or hasattr(h, 'new'):
+        if self.hashmod.__name__ not in ('Crypto.Hash.MD5', 'Crypto.Hash.SHA1') or hasattr(h, 'new'):
             h2 = h.new()
             h2.update(self.input)
             out5 = binascii.b2a_hex(h2.digest())

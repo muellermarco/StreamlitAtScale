@@ -1,4 +1,4 @@
-from atscale.errors import atscale_errors
+from typing import Dict, List
 
 
 def get_string_input(
@@ -22,18 +22,18 @@ def get_string_input(
 
 
 def choose_id_and_name_from_dict_list(
-    dcts: list, prompt: str = None, id_key: str = "id", name_key: str = "name"
-):
+    dcts: List[Dict], prompt: str = None, id_key: str = "id", name_key: str = "name"
+) -> Dict:
     """Given a list of dictionaries, we assume there is an id and name element and print them out then ask for user input to select one of them.
 
     Args:
-        dcts (list): list of python dictionaries
+        dcts (List[Dict]): list of python dictionaries
         prompt (str): custom prompt string
         id_col (str, optional): custom id key for the dict. Defaults to id
         name_col (str, optional): custom name key for the dict. Defaults to name
 
     Returns:
-        dict: the dict associated with the user input selection or None if they cancel somehow
+        Dict: the dict associated with the user input selection or None if they cancel somehow
     """
     if prompt:
         print(prompt)
@@ -41,7 +41,7 @@ def choose_id_and_name_from_dict_list(
         print("Please choose:")
 
     if len(dcts) < 1:
-        raise atscale_errors.UserError("No valid options to choose from")
+        raise ValueError("No valid options to choose from")
 
     if len(dcts) == 1:
         print(
@@ -65,9 +65,7 @@ def choose_id_and_name_from_dict_list(
         return dcts[i]
     else:
         # Else they picked a number not shown. We could recurse and keep asking but I'll just return None
-        raise atscale_errors.UserError(
-            f"The provided input number {i + 1} is out of range 1 - {len(dcts)}"
-        )
+        raise ValueError(f"The provided input number {i + 1} is out of range 1 - {len(dcts)}")
 
 
 def prompt_yes_no(

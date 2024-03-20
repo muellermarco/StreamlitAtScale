@@ -31,13 +31,13 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Util.asn1 import DerSequence
-from Cryptodome.Util.number import long_to_bytes
-from Cryptodome.Math.Numbers import Integer
+from Crypto.Util.asn1 import DerSequence
+from Crypto.Util.number import long_to_bytes
+from Crypto.Math.Numbers import Integer
 
-from Cryptodome.Hash import HMAC
-from Cryptodome.PublicKey.ECC import EccKey
-from Cryptodome.PublicKey.DSA import DsaKey
+from Crypto.Hash import HMAC
+from Crypto.PublicKey.ECC import EccKey
+from Crypto.PublicKey.DSA import DsaKey
 
 __all__ = ['DssSigScheme', 'new']
 
@@ -45,14 +45,14 @@ __all__ = ['DssSigScheme', 'new']
 class DssSigScheme(object):
     """A (EC)DSA signature object.
     Do not instantiate directly.
-    Use :func:`Cryptodome.Signature.DSS.new`.
+    Use :func:`Crypto.Signature.DSS.new`.
     """
 
     def __init__(self, key, encoding, order):
         """Create a new Digital Signature Standard (DSS) object.
 
         Do not instantiate this object directly,
-        use `Cryptodome.Signature.DSS.new` instead.
+        use `Crypto.Signature.DSS.new` instead.
         """
 
         self._key = key
@@ -80,7 +80,7 @@ class DssSigScheme(object):
         Args:
           msg_hash (hash object):
             The hash that was carried out over the message.
-            The object belongs to the :mod:`Cryptodome.Hash` package.
+            The object belongs to the :mod:`Crypto.Hash` package.
             Under mode ``'fips-186-3'``, the hash must be a FIPS
             approved secure hash (SHA-2 or SHA-3).
 
@@ -125,7 +125,7 @@ class DssSigScheme(object):
         Args:
           msg_hash (hash object):
             The hash that was carried out over the message.
-            This is an object belonging to the :mod:`Cryptodome.Hash` module.
+            This is an object belonging to the :mod:`Crypto.Hash` module.
             Under mode ``'fips-186-3'``, the hash must be a FIPS
             approved secure hash (SHA-2 or SHA-3).
 
@@ -160,7 +160,7 @@ class DssSigScheme(object):
         result = self._key._verify(z, (r_prime, s_prime))
         if not result:
             raise ValueError("The signature is not authentic")
-        # Make PyCryptodome code to fail
+        # Make PyCrypto code to fail
         return False
 
 
@@ -316,7 +316,7 @@ def new(key, mode, encoding='binary', randfunc=None):
         overview of the recommended key lengths.
 
     Args:
-        key (:class:`Cryptodome.PublicKey.DSA` or :class:`Cryptodome.PublicKey.ECC`):
+        key (:class:`Crypto.PublicKey.DSA` or :class:`Crypto.PublicKey.ECC`):
             The key to use for computing the signature (*private* keys only)
             or for verifying one.
             For DSA keys, let ``L`` and ``N`` be the bit lengths of the modulus ``p``

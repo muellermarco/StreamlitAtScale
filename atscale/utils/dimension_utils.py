@@ -1,22 +1,21 @@
 import logging
-from typing import List
+from typing import Dict, List
 import uuid
-from atscale.base import templates
 
+from atscale.base import templates, enums
 from atscale.connection.connection import _Connection
 from atscale.parsers import data_model_parser, project_parser
 from atscale.utils import project_utils, feature_utils
-from atscale.base.enums import TimeLevels, TimeSteps, PlatformType
 
 logger = logging.getLogger(__name__)
 
 
 def _generate_calculated_columns_for_date_column(
     atconn: _Connection,
-    data_set_project: dict,
+    data_set_project: Dict,
     column_name: str,
-    time_levels: list,
-) -> dict:
+    time_levels: List,
+) -> Dict:
     """
     Creates the calculated columns for extracting the time_levels from the date column referred to by column_name. Aggregating by dates
     can get involved. For instance, weeks can span months and years (e.g. Jan 1 comes on Wednesday). To address this, we use year (and
@@ -28,13 +27,13 @@ def _generate_calculated_columns_for_date_column(
 
     Args:
         atconn (_Connection): AtScale connection
-        data_set_project (dict): a data set at the project level
-        column_name (str): the name of the date column in a database, as referenced by AtScale, to generate calculated columns for that are associated with th eprovided TimeLevels
-        time_levels (list): a list of TimeLevels enums for which to create calculated columns (for breaking out the parts of the date column_name)
+        data_set_project (Dict): a data set at the project level
+        column_name (str): the name of the date column in a database, as referenced by AtScale, to generate calculated columns for that are associated with th eprovided enums.TimeLevels
+        time_levels (List): a list of enums.TimeLevels enums for which to create calculated columns (for breaking out the parts of the date column_name)
 
     Returns:
-        dict: a dict object where keys are the names of the time_levels and values are the names of the created calculated column for that leveel. May additionally contain a year and
-        day calculated column, even if not specified in the provided time_levels, for purposes of creating aggregate keys.
+        Dict: a dict object where keys are the names of the time_levels and values are the names of the created calculated column for that leveel. May additionally contain a year and
+            day calculated column, even if not specified in the provided time_levels, for purposes of creating aggregate keys.
     """
     platform = atconn._get_warehouse_platform(
         warehouse_id=data_set_project["physical"]["connection"]["id"]
@@ -42,16 +41,16 @@ def _generate_calculated_columns_for_date_column(
     # consolidating the behavior for databricks platforms
     if platform == "databricks":
         platform = "databrickssql"
-    platform_type = PlatformType(platform)
+    platform_type = enums.PlatformType(platform)
     calculated_columns = {}  # let's keep track of calculated columns as we go
-    # create calculated columns for everything in TimeLevels
+    # create calculated columns for everything in enums.TimeLevels
     for level in time_levels:
         calc_col_name = column_name + "_" + level.name
         project_utils.add_calculated_column_to_project_dataset(
             atconn=atconn,
             data_set=data_set_project,
             column_name=calc_col_name,
-            expression=level.get_sql_expression(column_name, platform_type),
+            expression=level.get_sql_expression(column_name, platform_type.dbconn),
         )
         # In the AtScale object model, even though the calculated column is added to the project dataset and has an id,
         # other things that reference it (like an attribute in a hierarchy) do not actually reference that id; they just
@@ -59,30 +58,30 @@ def _generate_calculated_columns_for_date_column(
         # for any subsequent code that may need to generate such references.
         calculated_columns[level.name] = calc_col_name
 
-    if not TimeLevels.Year.name in calculated_columns.keys():
+    if not enums.TimeLevels.Year.name in calculated_columns.keys():
         # We'll make a calculated column for year because it's required for aggregate keys on any levels other than year.
-        year_calc_col_name = column_name + "_" + TimeLevels.Year.name
-        calculated_columns[TimeLevels.Year] = year_calc_col_name
+        year_calc_col_name = column_name + "_" + enums.TimeLevels.Year.name
+        calculated_columns[enums.TimeLevels.Year] = year_calc_col_name
         project_utils.add_calculated_column_to_project_dataset(
             atconn=atconn,
             data_set=data_set_project,
             column_name=year_calc_col_name,
-            expression=level.get_sql_expression(column_name, platform_type),
+            expression=level.get_sql_expression(column_name, platform_type.dbconn),
         )
 
     # If we have levels below the day level, then we'll also need a day calculated column for aggregate keys.
     # Note that level.index starts at 0 for year and increments, so "lower" levels have higher index values.
     if (
-        any(TimeLevels.Day.index < l.index for l in time_levels)
-    ) and not TimeLevels.Day.name in calculated_columns.keys():  # if we have any sub day levels and day is not already in calculated_columns
+        any(enums.TimeLevels.Day.index < l.index for l in time_levels)
+    ) and not enums.TimeLevels.Day.name in calculated_columns.keys():  # if we have any sub day levels and day is not already in calculated_columns
         # add a calculated day column
-        day_calc_col_name = column_name + "_" + TimeLevels.Day.name
-        calculated_columns[TimeLevels.Day] = day_calc_col_name
+        day_calc_col_name = column_name + "_" + enums.TimeLevels.Day.name
+        calculated_columns[enums.TimeLevels.Day] = day_calc_col_name
         project_utils.add_calculated_column_to_project_dataset(
             atconn=atconn,
             data_set=data_set_project,
             column_name=day_calc_col_name,
-            expression=level.get_sql_expression(column_name, platform_type),
+            expression=level.get_sql_expression(column_name, platform_type.dbconn),
         )
 
     return calculated_columns
@@ -90,27 +89,27 @@ def _generate_calculated_columns_for_date_column(
 
 def create_time_dimension_for_column(
     atconn: _Connection,
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     dataset_id: str,
     column_name: str,
-    time_levels: List[TimeLevels],
+    time_levels: List[enums.TimeLevels],
     base_name: str = None,
     description: str = None,
     caption: str = None,
     folder: str = None,
     visible: bool = True,
 ):
-    """Mutates the provided project_dict in place to create a dimension with TimeLevels (see TimeLevels enum)
+    """Mutates the provided project_dict in place to create a dimension with enums.TimeLevels (see enums.TimeLevels enum)
     for different time windows (e.g. day, week, month) for the provided column_name and related parameters.
 
     Args:
         atconn (_Connection): AtScale connection
-        project_dict (dict): the dict associated with an AtScale project
+        project_dict (Dict): the dict associated with an AtScale project
         cube_id (str): the id for the cube where we will create the dimension
         dataset_id (str): the id for the dataset in the project associated with the table that corresponds with the column we're creating the dimension for
         column_name (str): the name of the colunm we're creating a dimension for
-        time_levels (list[TimeLevels]): a list of leves from the TimeLevels enum
+        time_levels (list[enums.TimeLevels]): a list of levels from the enums.TimeLevels enum
         base_name (str, optional): The base name to use to generate object names. Defaults to None to use the column_name.
         description (str, optional): a description for the dimension to be created. Defaults to None.
         caption (str, optional): a caption for the hierarchy to be created for the dimension. Defaults to None.
@@ -123,10 +122,6 @@ def create_time_dimension_for_column(
     data_set_project = project_parser.get_dataset(project_dict=project_dict, dataset_id=dataset_id)
     # we'll grab the data_model where most of the changes will occur
     data_model_dict = project_parser.get_cube(project_dict=project_dict, id=cube_id)
-
-    # Start data_model mutations by filling in the attributes element in case it's empty
-    # setdefault only has effect if attributes element doesn't exist yet
-    data_model_dict.setdefault("attributes", {})
 
     calculated_columns = _generate_calculated_columns_for_date_column(
         atconn=atconn,
@@ -141,15 +136,15 @@ def create_time_dimension_for_column(
     levels = {}  # we'll store levels as we go
     for level in time_levels:  # create a hierarchy level for each of the time_levels
         # Every TimeLevel has year for one of its key columns. See _generate_calculated_columns_for_date_column for more info.
-        k = calculated_columns.get(TimeLevels.Year.name)
+        k = calculated_columns.get(enums.TimeLevels.Year.name)
         keys = [k]
-        # We don't need to add more keys for TimeLevels.Year. But for anything lower than year, we need a key for it's level itself.
-        # Note that TimeLevels.index starts at 0 for year and goes up. So "lower" levels have higher index values.
-        if level.index > TimeLevels.Year.index:
+        # We don't need to add more keys for enums.TimeLevels.Year. But for anything lower than year, we need a key for it's level itself.
+        # Note that enums.TimeLevels.index starts at 0 for year and goes up. So "lower" levels have higher index values.
+        if level.index > enums.TimeLevels.Year.index:
             keys.append(calculated_columns.get(level.name))
         # any level below day additionally needs the day calculated column for a key
-        if level.index > TimeLevels.Day.index:
-            keys.append(calculated_columns.get(TimeLevels.Day.name))
+        if level.index > enums.TimeLevels.Day.index:
+            keys.append(calculated_columns.get(enums.TimeLevels.Day.name))
 
         # used in attribute-key and keyed-attribute json elements
         ref_id = str(uuid.uuid4())
@@ -159,8 +154,9 @@ def create_time_dimension_for_column(
         attribute_key_dict = templates.create_attribute_key_dict(
             key_id=ref_id, columns=len(keys), visible=visible
         )
-        data_model_dict["attributes"].setdefault("attribute-key", [])
-        data_model_dict["attributes"]["attribute-key"].append(attribute_key_dict)
+        data_model_dict.setdefault("attributes", {}).setdefault("attribute-key", []).append(
+            attribute_key_dict
+        )
 
         # set keyed-attribute element values
         keyed_attribute_id = str(uuid.uuid4())
@@ -172,8 +168,7 @@ def create_time_dimension_for_column(
             visible=visible,
             ordering="ascending",
         )
-        data_model_dict["attributes"].setdefault("keyed-attribute", [])
-        data_model_dict["attributes"]["keyed-attribute"].append(new_keyed_attribute)
+        data_model_dict["attributes"].setdefault("keyed-attribute", []).append(new_keyed_attribute)
 
         # create the hierarchy level, to be used in creating the hierarchy and dimension below this loop
         level_id = str(uuid.uuid4())
@@ -198,14 +193,12 @@ def create_time_dimension_for_column(
             key_id=ref_id, complete=True, columns=keys, unique=False
         )
 
-        data_set_ref["logical"].setdefault("key-ref", [])
-        data_set_ref["logical"]["key-ref"].append(key_ref_dict)
+        data_set_ref["logical"].setdefault("key-ref", []).append(key_ref_dict)
         # attribute-ref element under the "logcal" element
         attribute_ref_dict = templates.create_attribute_ref_dict(
             columns=[calculated_columns.get(level.name)], attribute_id=keyed_attribute_id
         )  # I actually don't know if column is used from this dict by the engine. But I see it only have one value, even if the associated level has multiple cols in its key
-        data_set_ref["logical"].setdefault("attribute-ref", [])
-        data_set_ref["logical"]["attribute-ref"].append(attribute_ref_dict)
+        data_set_ref["logical"].setdefault("attribute-ref", []).append(attribute_ref_dict)
 
     # create a hierarchy for the data_model with the levels we just created
     if base_name is None:
@@ -232,13 +225,11 @@ def create_time_dimension_for_column(
     )
 
     # add the new denomralized dimension to the data_model (dimensions usually sit in project but denormalized dimensions reside entirely in the data_model)
-    data_model_dict.setdefault("dimensions", {})
-    data_model_dict["dimensions"].setdefault("dimension", [])
-    data_model_dict["dimensions"]["dimension"].append(new_dimension)
+    data_model_dict.setdefault("dimensions", {}).setdefault("dimension", []).append(new_dimension)
 
 
 def create_dimension(
-    project_dict: dict, cube_id: str, name: str, time_dimension: bool, description: str = ""
+    project_dict: Dict, cube_id: str, name: str, time_dimension: bool, description: str = ""
 ):
     dimension_id = str(uuid.uuid4())
     new_dimension = templates.create_dimension_dict(
@@ -249,17 +240,14 @@ def create_dimension(
         description=description,
     )
     new_dimension_ref = {"id": dimension_id}
-    project_dict.setdefault("dimensions", {})
-    project_dict["dimensions"].setdefault("dimension", [])
-    project_dict["dimensions"]["dimension"].append(new_dimension)
+    project_dict.setdefault("dimensions", {}).setdefault("dimension", []).append(new_dimension)
 
     cube = project_parser.get_cube(project_dict=project_dict, id=cube_id)
-    cube["dimensions"].setdefault("dimension-ref", [])
-    cube["dimensions"]["dimension-ref"].append(new_dimension_ref)
+    cube.setdefault("dimensions", {}).setdefault("dimension-ref", []).append(new_dimension_ref)
 
 
 def create_hierarchy(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     name: str,
     dimension_name: str,
@@ -283,14 +271,12 @@ def create_hierarchy(
     found = False
     for dimension in project_dict.get("dimensions", {}).get("dimension", []):
         if dimension["name"] == dimension_name:
-            dimension.setdefault("hierarchy", [])
-            dimension["hierarchy"].append(new_hierarchy)
+            dimension.setdefault("hierarchy", []).append(new_hierarchy)
             dataset_id = project_parser.get_dataset(project_dict, dataset_name=dataset_name).get(
                 "id"
             )
             if dataset_id not in dimension.get("participating_datasets", []):
-                dimension.setdefault("participating_datasets", [])
-                dimension["participating_datasets"].append(dataset_id)
+                dimension.setdefault("participating_datasets", []).append(dataset_id)
             existing_ref = False
             cube["dimensions"].setdefault("dimension-ref", [])
             for ref in cube["dimensions"]["dimension-ref"]:
@@ -306,20 +292,19 @@ def create_hierarchy(
         cube = project_parser.get_cube(project_dict=project_dict, id=cube_id)
         for dimension in cube.get("dimensions", {}).get("dimension", []):
             if dimension["name"] == dimension_name:
-                dimension.setdefault("hierarchy", [])
-                dimension["hierarchy"].append(new_hierarchy)
+                dimension.setdefault("hierarchy", []).append(new_hierarchy)
                 break
 
 
 def create_level(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     level_name: str,
     dataset_name: str,
     value_column: str,
     hierarchy_name: str,
     key_columns: List[str] = None,
-    level_type: TimeSteps = TimeSteps.Regular,
+    level_type: enums.TimeSteps = enums.TimeSteps.Regular,
     existing_level: str = None,
     add_above_existing: bool = True,
     caption: str = None,
@@ -335,8 +320,9 @@ def create_level(
     attribute_key_dict = templates.create_attribute_key_dict(
         key_id=ref_id, columns=len(key_columns), visible=True
     )
-    project_dict["attributes"].setdefault("attribute-key", [])
-    project_dict["attributes"]["attribute-key"].append(attribute_key_dict)
+    project_dict.setdefault("attributes", {}).setdefault("attribute-key", []).append(
+        attribute_key_dict
+    )
 
     # set keyed-attribute element values
     keyed_attribute_id = str(uuid.uuid4())
@@ -352,7 +338,7 @@ def create_level(
 
     existing_attribute_id = None
     if existing_level:
-        for attribute in project_dict["attributes"]["keyed-attribute"]:
+        for attribute in project_dict.get("attributes", {}).get("keyed-attribute", []):
             if attribute.get("name") == existing_level:
                 existing_attribute_id = attribute.get("id")
                 break
@@ -383,8 +369,7 @@ def create_level(
             if hierarchy.get("name") == hierarchy_name:
                 found = True
                 if not existing_level:
-                    hierarchy.setdefault("level", [])
-                    hierarchy["level"].append(new_level)
+                    hierarchy.setdefault("level", []).append(new_level)
                 else:
                     updated_levels_list = []
                     for level in hierarchy.get("level", []):
@@ -399,16 +384,16 @@ def create_level(
                             updated_levels_list.append(level)
                     hierarchy["level"] = updated_levels_list
 
-                project_dict["attributes"].setdefault("attribute-key", [])
-                project_dict["attributes"]["attribute-key"].append(attribute_key_dict)
+                project_dict["attributes"].setdefault("attribute-key", []).append(
+                    attribute_key_dict
+                )
 
-                project_dict["attributes"].setdefault("keyed-attribute", [])
-                project_dict["attributes"]["keyed-attribute"].append(new_keyed_attribute)
+                project_dict["attributes"].setdefault("keyed-attribute", []).append(
+                    new_keyed_attribute
+                )
 
-                dataset["logical"].setdefault("key-ref", [])
-                dataset["logical"]["key-ref"].append(key_ref_dict)
-                dataset["logical"].setdefault("attribute-ref", [])
-                dataset["logical"]["attribute-ref"].append(attribute_ref_dict)
+                dataset["logical"].setdefault("key-ref", []).append(key_ref_dict)
+                dataset["logical"].setdefault("attribute-ref", []).append(attribute_ref_dict)
                 break
     if not found:
         cube = project_parser.get_cube(project_dict=project_dict, id=cube_id)
@@ -416,8 +401,7 @@ def create_level(
             for hierarchy in dimension.get("hierarchy", []):
                 if hierarchy.get("name") == hierarchy_name:
                     if not existing_level:
-                        hierarchy.setdefault("level", [])
-                        hierarchy["level"].append(new_level)
+                        hierarchy.setdefault("level", []).append(new_level)
                     else:
                         updated_levels_list = []
                         for level in hierarchy.get("level", []):
@@ -432,24 +416,22 @@ def create_level(
                                 updated_levels_list.append(level)
                         hierarchy["level"] = updated_levels_list
 
-                    cube["attributes"].setdefault("attribute-key", [])
-                    cube["attributes"]["attribute-key"].append(attribute_key_dict)
+                    cube["attributes"].setdefault("attribute-key", []).append(attribute_key_dict)
 
-                    cube["attributes"].setdefault("keyed-attribute", [])
-                    cube["attributes"]["keyed-attribute"].append(new_keyed_attribute)
+                    cube["attributes"].setdefault("keyed-attribute", []).append(new_keyed_attribute)
 
                     for dataset_ref in cube.get("data-sets", {}).get("data-set-ref", []):
                         if dataset_ref["id"] == dataset["id"]:
-                            dataset_ref["logical"].setdefault("key-ref", [])
-                            dataset_ref["logical"]["key-ref"].append(key_ref_dict)
-                            dataset_ref["logical"].setdefault("attribute-ref", [])
-                            dataset_ref["logical"]["attribute-ref"].append(attribute_ref_dict)
+                            dataset_ref["logical"].setdefault("key-ref", []).append(key_ref_dict)
+                            dataset_ref["logical"].setdefault("attribute-ref", []).append(
+                                attribute_ref_dict
+                            )
                             break
                     break
 
 
 def create_categorical_dimension_for_column(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     dataset_id: str,
     column_name: str,
@@ -462,7 +444,7 @@ def create_categorical_dimension_for_column(
     """Creates a categorical dimension with a single level of a hierarchy for a column.
 
     Args:
-        project_dict (dict): python dict for project
+        project_dict (Dict): python dict for project
         cube_id (str): id for the cube
         dataset_id (str): id for the dataset associated with the table where the column resides
         column_name (str): name of the column to create the dimension for
@@ -475,9 +457,6 @@ def create_categorical_dimension_for_column(
 
     # we'll grab the data_model or "cube" where most of the changes will occur
     data_model_dict = project_parser.get_cube(project_dict=project_dict, id=cube_id)
-    # Start data_model mutations by filling in the attributes element in case it's empty
-    # only has effect if attributes element doesn't exist yet
-    data_model_dict.setdefault("attributes", {})
 
     # used in attribute-key and keyed-attribute json elements
     ref_id = str(uuid.uuid4())
@@ -489,8 +468,9 @@ def create_categorical_dimension_for_column(
         columns=1,
         visible=visible,
     )
-    data_model_dict["attributes"].setdefault("attribute-key", [])
-    data_model_dict["attributes"]["attribute-key"].append(attribute_key_dict)
+    data_model_dict.setdefault("attributes", {}).setdefault("attribute-key", []).append(
+        attribute_key_dict
+    )
 
     # keyed-attribute element values
     keyed_attribute_id = str(uuid.uuid4())
@@ -504,8 +484,7 @@ def create_categorical_dimension_for_column(
         caption=caption,
         description=description,
     )
-    data_model_dict["attributes"].setdefault("keyed-attribute", [])
-    data_model_dict["attributes"]["keyed-attribute"].append(new_keyed_attribute)
+    data_model_dict["attributes"].setdefault("keyed-attribute", []).append(new_keyed_attribute)
 
     # create the dimension : start with hierarchy level and hierarchy
     # create the hierarchy level
@@ -536,9 +515,7 @@ def create_categorical_dimension_for_column(
     )
 
     # add the new denomralized dimension to the data_model (dimensions usually sit in project but denormalized dimensions reside in the data_model)
-    data_model_dict.setdefault("dimensions", {})
-    data_model_dict["dimensions"].setdefault("dimension", [])
-    data_model_dict["dimensions"]["dimension"].append(new_dimension)
+    data_model_dict.setdefault("dimensions", {}).setdefault("dimension", []).append(new_dimension)
 
     # Grab the data_set_ref in the data_model that references the dataset in the project. get_data_set_ref delists and returns the first dict inside of the data-set-ref list
     data_set_ref = data_model_parser.get_data_set_ref(
@@ -548,25 +525,23 @@ def create_categorical_dimension_for_column(
     key_ref_dict = templates.create_attribute_key_ref_dict(
         key_id=ref_id, complete=True, columns=[column_name], unique=False
     )
-    data_set_ref["logical"].setdefault("key-ref", [])
-    data_set_ref["logical"]["key-ref"].append(key_ref_dict)
+    data_set_ref["logical"].setdefault("key-ref", []).append(key_ref_dict)
     # attribute-ref element under the "logical" element
     attribute_ref_dict = templates.create_attribute_ref_dict(
         columns=[column_name], attribute_id=keyed_attribute_id
     )
-    data_set_ref["logical"].setdefault("attribute-ref", [])
-    data_set_ref["logical"]["attribute-ref"].append(attribute_ref_dict)
+    data_set_ref["logical"].setdefault("attribute-ref", []).append(attribute_ref_dict)
 
 
 def create_time_dimension_from_table(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     dataset_id: str,
 ):
     """Mutates the provided project_dict in place to create a date dimension from a date table.
 
     Args:
-        project_dict (dict): python dict for project
+        project_dict (Dict): python dict for project
         cube_id (str): id for the cube
         dataset_id (str): id for the dataset containing the date info
     """
@@ -588,11 +563,11 @@ def create_time_dimension_from_table(
         month_name = "MONTH_NAME"
         day_name = "DAY_NAME"
 
-    # Start data_model mutations by filling in the attributes element in case it's empty
-    # setdefault only has effect if attributes element doesn't exist yet
-    project_dict.setdefault("attributes", {})
-
-    time_levels = [(year, TimeLevels.Year), (month, TimeLevels.Month), (date, TimeLevels.Day)]
+    time_levels = [
+        (year, enums.TimeLevels.Year),
+        (month, enums.TimeLevels.Month),
+        (date, enums.TimeLevels.Day),
+    ]
 
     levels = {}  # we'll store levels as we go
     for level, level_type in time_levels:  # create a hierarchy level for each of the time_levels
@@ -608,8 +583,9 @@ def create_time_dimension_from_table(
         attribute_key_dict = templates.create_attribute_key_dict(
             key_id=ref_id, columns=len(keys), visible=True
         )
-        project_dict["attributes"].setdefault("attribute-key", [])
-        project_dict["attributes"]["attribute-key"].append(attribute_key_dict)
+        project_dict.setdefault("attributes", {}).setdefault("attribute-key", []).append(
+            attribute_key_dict
+        )
 
         # set keyed-attribute element values
         keyed_attribute_id = str(uuid.uuid4())
@@ -621,8 +597,7 @@ def create_time_dimension_from_table(
             ordering="ascending",
             visible=True,
         )
-        project_dict["attributes"].setdefault("keyed-attribute", [])
-        project_dict["attributes"]["keyed-attribute"].append(new_keyed_attribute)
+        project_dict["attributes"].setdefault("keyed-attribute", []).append(new_keyed_attribute)
 
         # create the hierarchy level, to be used in creating the hierarchy and dimension below this loop
         level_id = str(uuid.uuid4())
@@ -639,14 +614,12 @@ def create_time_dimension_from_table(
             key_id=ref_id, complete=True, columns=keys, unique=False
         )
 
-        dataset["logical"].setdefault("key-ref", [])
-        dataset["logical"]["key-ref"].append(key_ref_dict)
+        dataset["logical"].setdefault("key-ref", []).append(key_ref_dict)
         # attribute-ref element under the "logical" element
         attribute_ref_dict = templates.create_attribute_ref_dict(
             columns=[level], attribute_id=keyed_attribute_id
         )
-        dataset["logical"].setdefault("attribute-ref", [])
-        dataset["logical"]["attribute-ref"].append(attribute_ref_dict)
+        dataset["logical"].setdefault("attribute-ref", []).append(attribute_ref_dict)
 
     hierarchy_id = str(uuid.uuid4())
     new_hierarchy = templates.create_hierarchy_dict(
@@ -670,9 +643,7 @@ def create_time_dimension_from_table(
     )
 
     # add the new dimension to the data_model
-    project_dict.setdefault("dimensions", {})
-    project_dict["dimensions"].setdefault("dimension", [])
-    project_dict["dimensions"]["dimension"].append(new_dimension)
+    project_dict.setdefault("dimensions", {}).setdefault("dimension", []).append(new_dimension)
 
     # create the secondary attributes after the hierarchy
     feature_utils._create_secondary_attribute(

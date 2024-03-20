@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.ARC2"""
+"""Self-test suite for Crypto.Cipher.ARC2"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import b, bchr
+from Crypto.Util.py3compat import b, bchr
 
-from Cryptodome.Cipher import ARC2
+from Crypto.Cipher import ARC2
 
 # This is a list of (plaintext, ciphertext, key[, description[, extra_params]]) tuples.
 test_data = [
@@ -57,7 +57,7 @@ test_data = [
         '88bca90e90875a7f0f79c384627bafb216f80a6f85920584c42fceb0be255daf1e',
         "RFC2268-8", dict(effective_keylen=129)),
 
-    # Test vectors from PyCryptodome 2.0.1's testdata.py
+    # Test vectors from PyCrypto 2.0.1's testdata.py
     # 1024-bit effective key length
     ('0000000000000000', '624fb3e887419e48', '5068696c6970476c617373',
         'PCTv201-0'),
@@ -149,7 +149,7 @@ class TestOutput(unittest.TestCase):
 
 
 def get_tests(config={}):
-    from Cryptodome.Cipher import ARC2
+    from Crypto.Cipher import ARC2
     from .common import make_block_tests
 
     tests = make_block_tests(ARC2, "ARC2", test_data)

@@ -34,13 +34,13 @@ import warnings
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Util.py3compat import bord, tostr, FileNotFoundError
-from Cryptodome.Util.asn1 import DerSequence, DerBitString
-from Cryptodome.Util.number import bytes_to_long
-from Cryptodome.Hash import SHAKE128
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import bord, tostr, FileNotFoundError
+from Crypto.Util.asn1 import DerSequence, DerBitString
+from Crypto.Util.number import bytes_to_long
+from Crypto.Hash import SHAKE128
 
-from Cryptodome.PublicKey import ECC
+from Crypto.PublicKey import ECC
 
 try:
     import pycryptodome_test_vectors  # type: ignore
@@ -376,6 +376,15 @@ class TestImport_P224(unittest.TestCase):
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
 
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_p224_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
     def test_import_x509_der(self):
         key_file = load_file("ecc_p224_x509.der")
 
@@ -482,6 +491,15 @@ class TestImport_P256(unittest.TestCase):
 
     def test_import_private_pkcs8_encrypted_2(self):
         key_file = load_file("ecc_p256_private_p8.pem")
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_p256_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
 
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
@@ -626,6 +644,15 @@ class TestImport_P384(unittest.TestCase):
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
 
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_p384_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
     def test_import_x509_der(self):
         key_file = load_file("ecc_p384_x509.der")
 
@@ -757,6 +784,15 @@ class TestImport_P521(unittest.TestCase):
 
     def test_import_private_pkcs8_encrypted_2(self):
         key_file = load_file("ecc_p521_private_p8.pem")
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_p521_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
 
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
@@ -902,6 +938,15 @@ class TestExport_P192(unittest.TestCase):
         encoded = self.ref_private.export_key(format="DER",
                                                 passphrase="secret",
                                                 protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                                passphrase="secret",
+                                                protection="PBKDF2WithHMAC-SHA224AndAES192-CBC",
+                                                prot_params={'iteration_count':123})
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
@@ -1155,7 +1200,8 @@ class TestExport_P224(unittest.TestCase):
 
         encoded = self.ref_private.export_key(format="DER",
                                                 passphrase="secret",
-                                                protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
+                                                protection="PBKDF2WithHMAC-SHA512-224AndAES128-CBC",
+                                                prot_params={'iteration_count':123})
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
@@ -1410,6 +1456,15 @@ class TestExport_P256(unittest.TestCase):
         encoded = self.ref_private.export_key(format="DER",
                                                 passphrase="secret",
                                                 protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                                passphrase="secret",
+                                                protection="PBKDF2WithHMAC-SHA512-256AndAES128-CBC",
+                                                prot_params={'iteration_count':123})
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
@@ -1689,6 +1744,15 @@ class TestExport_P384(unittest.TestCase):
         encoded = self.ref_private.export_key(format="DER",
                                          passphrase="secret",
                                          protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                         passphrase="secret",
+                                         protection="PBKDF2WithHMAC-SHA384AndAES128-CBC",
+                                         prot_params={'iteration_count':123})
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
@@ -1982,6 +2046,15 @@ class TestExport_P521(unittest.TestCase):
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                         passphrase="secret",
+                                         protection="PBKDF2WithHMAC-SHA1AndAES128-CBC",
+                                         prot_params={'iteration_count':123})
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
     def test_export_public_pem_uncompressed(self):
         key_file = load_file("ecc_p521_public.pem", "rt").strip()
 
@@ -2229,6 +2302,15 @@ class TestImport_Ed25519(unittest.TestCase):
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
 
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_ed25519_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
     def test_import_x509_der(self):
         key_file = load_file("ecc_ed25519_x509.der")
 
@@ -2269,9 +2351,9 @@ class TestImport_Ed25519(unittest.TestCase):
     def test_import_openssh_public(self):
         key_file = load_file("ecc_ed25519_public_openssh.txt")
         key = ECC._import_openssh_public(key_file)
-        self.failIf(key.has_private())
+        self.assertFalse(key.has_private())
         key = ECC.import_key(key_file)
-        self.failIf(key.has_private())
+        self.assertFalse(key.has_private())
 
     def test_import_openssh_private_clear(self):
         key_file = load_file("ecc_ed25519_private_openssh.pem")
@@ -2332,6 +2414,15 @@ class TestExport_Ed25519(unittest.TestCase):
         encoded = self.ref_private.export_key(format="DER",
                                          passphrase="secret",
                                          protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                         passphrase="secret",
+                                         protection="PBKDF2WithHMAC-SHA256AndAES128-CBC",
+                                         prot_params={'iteration_count':123})
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
 
@@ -2458,6 +2549,15 @@ class TestImport_Ed448(unittest.TestCase):
         key = ECC.import_key(key_file, "secret")
         self.assertEqual(self.ref_private, key)
 
+    def test_import_private_pkcs8_encrypted_3(self):
+        key_file = load_file("ecc_ed448_private_p8_2.der")
+
+        key = ECC._import_der(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
+        key = ECC.import_key(key_file, "secret")
+        self.assertEqual(self.ref_private, key)
+
     def test_import_x509_der(self):
         key_file = load_file("ecc_ed448_x509.der")
 
@@ -2548,6 +2648,16 @@ class TestExport_Ed448(unittest.TestCase):
                                          protection="PBKDF2WithHMAC-SHA1AndAES128-CBC")
         decoded = ECC.import_key(encoded, "secret")
         self.assertEqual(self.ref_private, decoded)
+
+        # ---
+
+        encoded = self.ref_private.export_key(format="DER",
+                                         passphrase="secret",
+                                         protection="PBKDF2WithHMAC-SHA384AndAES128-CBC",
+                                         prot_params={'iteration_count':123})
+        decoded = ECC.import_key(encoded, "secret")
+        self.assertEqual(self.ref_private, decoded)
+
 
     def test_export_public_pem(self):
         key_file_ref = load_file("ecc_ed448_public.pem", "rt").strip()

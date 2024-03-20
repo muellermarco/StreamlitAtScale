@@ -34,9 +34,9 @@
 import unittest
 from binascii import unhexlify as uh
 
-from Cryptodome.Util.py3compat import *
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Util.Padding import pad, unpad
+from Crypto.Util.py3compat import *
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Util.Padding import pad, unpad
 
 class PKCS7_Tests(unittest.TestCase):
 

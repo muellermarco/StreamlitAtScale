@@ -28,7 +28,7 @@ from __future__ import print_function
 
 import binascii
 
-from Cryptodome.Util.py3compat import bord, bchr
+from Crypto.Util.py3compat import bord, bchr
 
 binary = {0: '0000', 1: '0001', 2: '0010', 3: '0011', 4: '0100', 5: '0101',
           6: '0110', 7: '0111', 8: '1000', 9: '1001', 10: '1010', 11: '1011',
@@ -57,7 +57,7 @@ def key_to_english(key):
 
     Example::
 
-        >>> from Cryptodome.Util.RFC1751 import key_to_english
+        >>> from Crypto.Util.RFC1751 import key_to_english
         >>> key_to_english(b'66666666')
         'RAM LOIS GOAD CREW CARE HIT'
 
@@ -92,7 +92,7 @@ def english_to_key(s):
 
     Example::
 
-        >>> from Cryptodome.Util.RFC1751 import english_to_key
+        >>> from Crypto.Util.RFC1751 import english_to_key
         >>> english_to_key('RAM LOIS GOAD CREW CARE HIT')
         b'66666666'
 

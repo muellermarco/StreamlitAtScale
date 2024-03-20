@@ -36,14 +36,14 @@ __all__ = ['SivMode']
 
 from binascii import hexlify, unhexlify
 
-from Cryptodome.Util.py3compat import bord, _copy_bytes
+from Crypto.Util.py3compat import bord, _copy_bytes
 
-from Cryptodome.Util._raw_api import is_buffer
+from Crypto.Util._raw_api import is_buffer
 
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long
-from Cryptodome.Protocol.KDF import _S2V
-from Cryptodome.Hash import BLAKE2s
-from Cryptodome.Random import get_random_bytes
+from Crypto.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Protocol.KDF import _S2V
+from Crypto.Hash import BLAKE2s
+from Crypto.Random import get_random_bytes
 
 
 class SivMode(object):
@@ -361,8 +361,8 @@ def _create_siv_cipher(factory, **kwargs):
     :Parameters:
 
       factory : object
-        A symmetric cipher module from `Cryptodome.Cipher`
-        (like `Cryptodome.Cipher.AES`).
+        A symmetric cipher module from `Crypto.Cipher`
+        (like `Crypto.Cipher.AES`).
 
     :Keywords:
 

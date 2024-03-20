@@ -1,6 +1,6 @@
 from typing import Union, Optional
 
-from Cryptodome.Hash.cSHAKE128 import cSHAKE_XOF
+from Crypto.Hash.cSHAKE128 import cSHAKE_XOF
 
 Buffer = Union[bytes, bytearray, memoryview]
 

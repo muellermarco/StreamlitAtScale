@@ -28,16 +28,16 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHAKE128 and SHAKE256"""
+"""Self-test suite for Crypto.Hash.SHAKE128 and SHAKE256"""
 
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Hash import SHAKE128, SHAKE256
-from Cryptodome.Util.py3compat import b, bchr, bord, tobytes
+from Crypto.Hash import SHAKE128, SHAKE256
+from Crypto.Util.py3compat import b, bchr, bord, tobytes
 
 class SHAKETest(unittest.TestCase):
 

@@ -22,15 +22,15 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.ARC4"""
+"""Self-test suite for Crypto.Cipher.ARC4"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import b
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import b
+from Crypto.SelfTest.st_common import list_test_cases
 from binascii import unhexlify
 
-from Cryptodome.Cipher import ARC4
+from Crypto.Cipher import ARC4
 
 # This is a list of (plaintext, ciphertext, key[, description]) tuples.
 test_data = [

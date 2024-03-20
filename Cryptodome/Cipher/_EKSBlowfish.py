@@ -30,13 +30,13 @@
 
 import sys
 
-from Cryptodome.Cipher import _create_cipher
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Cipher import _create_cipher
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer, c_size_t,
                                   c_uint8_ptr, c_uint)
 
 _raw_blowfish_lib = load_pycryptodome_raw_lib(
-        "Cryptodome.Cipher._raw_eksblowfish",
+        "Crypto.Cipher._raw_eksblowfish",
         """
         int EKSBlowfish_start_operation(const uint8_t key[],
                                         size_t key_len,

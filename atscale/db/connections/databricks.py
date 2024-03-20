@@ -1,20 +1,15 @@
 from pandas import DataFrame
 import cryptocode
 import getpass
-import inspect
+from typing import Dict, List
 import logging
+import numpy as np
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
 from atscale.errors import atscale_errors
-from atscale.errors.atscale_errors import AtScaleExtrasDependencyImportError
 from atscale.db.sqlalchemy_connection import SQLAlchemyConnection
-from atscale.base.enums import (
-    PlatformType,
-    PandasTableExistsActionType,
-    PysparkTableExistsActionType,
-)
-from atscale.utils import validation_utils, db_utils
-from typing import List
+from atscale.base import enums
+from atscale.utils import db_utils, validation_utils
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +19,7 @@ class Databricks(SQLAlchemyConnection):
     interactions with Databricks.
     """
 
-    platform_type: PlatformType = PlatformType.DATABRICKS
+    platform_type_str: str = "databrickssql"
 
     conversion_dict = {
         "<class 'numpy.int32'>": "INT",
@@ -66,15 +61,15 @@ class Databricks(SQLAlchemyConnection):
             from sqlalchemy import create_engine
             from databricks import sql
         except ImportError as e:
-            raise AtScaleExtrasDependencyImportError("databricks", str(e))
+            raise atscale_errors.AtScaleExtrasDependencyImportError("databricks", str(e))
 
         super().__init__(warehouse_id)
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if token:
-            self._token = cryptocode.encrypt(token, self.platform_type.value)
+            self._token = cryptocode.encrypt(token, self.platform_type_str)
         else:
             self._token = None
         self._host = host
@@ -102,7 +97,7 @@ class Databricks(SQLAlchemyConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._token = cryptocode.encrypt(value, self.platform_type.value)
+        self._token = cryptocode.encrypt(value, self.platform_type_str)
         self.dispose_engine()
 
     @property
@@ -195,9 +190,9 @@ class Databricks(SQLAlchemyConnection):
         if not self._token:
             self._token = cryptocode.encrypt(
                 getpass.getpass(prompt="Please enter your Databricks token: "),
-                self.platform_type.value,
+                self.platform_type_str,
             )
-        token = cryptocode.decrypt(self._token, self.platform_type.value)
+        token = cryptocode.decrypt(self._token, self.platform_type_str)
         connection_url = URL.create(
             "databricks+connector",
             username="token",
@@ -215,7 +210,7 @@ class Databricks(SQLAlchemyConnection):
     @staticmethod
     def _format_types(
         dataframe: DataFrame,
-    ) -> dict:
+    ) -> Dict:
         types = {}
         for i in dataframe.columns:
             if (
@@ -229,130 +224,19 @@ class Databricks(SQLAlchemyConnection):
                 types[i] = Databricks.conversion_dict["<class 'str'>"]
         return types
 
-    def _warehouse_variance(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        var = db_utils._construct_submit_return_warehouse_stats_one_feat(
-            dbconn=self,
-            samp_query="select var_samp({0}) from {1}; ",
-            pop_query="select var_pop({0}) from {1}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature=feature,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return var
-
-    def _warehouse_std(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        std = db_utils._construct_submit_return_warehouse_stats_one_feat(
-            dbconn=self,
-            samp_query="select stddev_samp({0}) from {1}; ",
-            pop_query="select stddev_pop({0}) from {1}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature=feature,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return std
-
-    def _warehouse_covariance(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature_1: str,
-        feature_2: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-        samp: bool,
-    ):
-        cov = db_utils._construct_submit_return_warehouse_stats_two_feat(
-            dbconn=self,
-            samp_query="select covar_samp({0}, {1}) from {2}; ",
-            pop_query="select covar_pop({0}, {1}) from {2}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature1=feature_1,
-            feature2=feature_2,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-            samp=samp,
-        )
-
-        return cov
-
-    def _warehouse_corrcoef(
-        self,
-        data_model: "DataModel",
-        write_database: str,
-        write_schema: str,
-        feature_1: str,
-        feature_2: str,
-        granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
-    ):
-        corrcoef = db_utils._construct_submit_return_warehouse_stats_two_feat(
-            dbconn=self,
-            samp_query="select corr({0}, {1}) from {2}; ",
-            pop_query="select corr({0}, {1}) from {2}; ",
-            data_model=data_model,
-            write_database=write_database,
-            write_schema=write_schema,
-            feature1=feature_1,
-            feature2=feature_2,
-            granularity_levels=granularity_levels,
-            if_exists=if_exists,
-        )
-
-        return corrcoef
-
-    def submit_query(
-        self,
-        query,
-    ):
-        # validate the non-null inputs
-        if query is None:
-            raise ValueError(f"The following required parameters are None: query")
-        return self.submit_queries([query])[0]
-
     def submit_queries(
         self,
         query_list: list,
     ) -> list:
         inspection = getfullargspec(self.submit_queries)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         from databricks import sql
 
         connection = sql.connect(
             server_hostname=self._host,
             http_path=self._http_path,
-            access_token=cryptocode.decrypt(self._token, self.platform_type.value),
+            access_token=cryptocode.decrypt(self._token, self.platform_type_str),
         )
         cursor = connection.cursor()
 
@@ -369,7 +253,7 @@ class Databricks(SQLAlchemyConnection):
     def _create_table(
         self,
         table_name: str,
-        types: dict,
+        types: Dict,
         cursor,
     ):
         # If the table exists we'll just let this fail and raise the appropriate exception.
@@ -386,48 +270,59 @@ class Databricks(SQLAlchemyConnection):
         self,
         table_name: str,
         dataframe: DataFrame,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         chunksize: int = 1000,
     ):
         inspection = getfullargspec(self.write_df_to_db)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
+
         from databricks import sql
 
         connection = sql.connect(
             server_hostname=self._host,
             http_path=self._http_path,
-            access_token=cryptocode.decrypt(self._token, self.platform_type.value),
+            access_token=cryptocode.decrypt(self._token, self.platform_type_str),
         )
         cursor = connection.cursor()
 
         tables = cursor.tables(
             table_name=table_name, schema_name=self.schema, catalog_name=self.catalog
         ).fetchall()
+        cursor.execute(f"USE CATALOG {self.catalog}")
         if len(tables) > 1:
-            raise ValueError(
+            raise atscale_errors.CollisionError(
                 f"{table_name} already exists in schema: {self.schema} for catalog: "
                 f"{self.catalog} with type {tables[0].asDict().get('TABLE_TYPE')} "
                 f"and must be dropped to create a table with the same name"
             )
         if len(tables) == 1:
-            if tables[0].asDict().get("TABLE_TYPE") != "TABLE":
-                raise ValueError(
-                    f"{table_name} already exists in schema: {self.schema} for catalog: "
-                    f"{self.catalog} with type {tables[0].asDict().get('TABLE_TYPE')} and "
-                    f"must be dropped to create a table with the same name"
+            cursor.execute(f"show tables in {self.catalog}.{self.schema}")
+            existing_tables = cursor.fetchall_arrow().to_pandas()["tableName"].values
+            cursor.execute(f"show views in {self.catalog}.{self.schema}")
+            existing_views = cursor.fetchall_arrow().to_pandas()["viewName"].values
+            only_existing_tables = np.setdiff1d(existing_tables, existing_views)
+            if table_name not in only_existing_tables:
+                raise atscale_errors.CollisionError(
+                    f"Object with name {table_name} already exists in schema: {self.schema} for catalog: "
+                    f"{self.catalog} and must be dropped to create a table with the same name"
                 )
             exists = True
         else:
             exists = False
 
-        if exists and if_exists == PandasTableExistsActionType.FAIL:
-            raise ValueError(
+        if exists and if_exists == enums.TableExistsAction.ERROR:
+            raise atscale_errors.CollisionError(
                 f"A table or view named: {table_name} already exists in schema: {self.schema} for catalog: {self.catalog}"
             )
 
         types = self._format_types(dataframe)
 
-        if exists and if_exists == PandasTableExistsActionType.REPLACE:
+        if exists and if_exists == enums.TableExistsAction.OVERWRITE:
             operation = f"DROP TABLE {self._create_table_path(table_name)}"
             cursor.execute(operation)
             self._create_table(table_name, types, cursor)
@@ -471,3 +366,119 @@ class Databricks(SQLAlchemyConnection):
             str: the queriable location of the table
         """
         return f"{self._column_quote()}{self.catalog}{self._column_quote()}.{self._column_quote()}{self.schema}{self._column_quote()}.{self._column_quote()}{table_name}{self._column_quote()}"
+
+    def _warehouse_variance(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        var = db_utils._construct_submit_return_warehouse_stats_one_feat(
+            dbconn=self,
+            samp_query="select var_samp({0}) from {1}; ",
+            pop_query="select var_pop({0}) from {1}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature=feature,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return var
+
+    def _warehouse_std(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        std = db_utils._construct_submit_return_warehouse_stats_one_feat(
+            dbconn=self,
+            samp_query="select stddev_samp({0}) from {1}; ",
+            pop_query="select stddev_pop({0}) from {1}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature=feature,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return std
+
+    def _warehouse_covariance(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature_1: str,
+        feature_2: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+        samp: bool,
+    ):
+        cov = db_utils._construct_submit_return_warehouse_stats_two_feat(
+            dbconn=self,
+            samp_query="select covar_samp({0}, {1}) from {2}; ",
+            pop_query="select covar_pop({0}, {1}) from {2}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature1=feature_1,
+            feature2=feature_2,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+            samp=samp,
+        )
+
+        return cov
+
+    def _warehouse_corrcoef(
+        self,
+        data_model: "DataModel",
+        write_database: str,
+        write_schema: str,
+        feature_1: str,
+        feature_2: str,
+        granularity_levels: List[str],
+        if_exists: enums.TableExistsAction,
+    ):
+        corrcoef = db_utils._construct_submit_return_warehouse_stats_two_feat(
+            dbconn=self,
+            samp_query="select corr({0}, {1}) from {2}; ",
+            pop_query="select corr({0}, {1}) from {2}; ",
+            data_model=data_model,
+            write_database=write_database,
+            write_schema=write_schema,
+            feature1=feature_1,
+            feature2=feature_2,
+            granularity_levels=granularity_levels,
+            if_exists=if_exists,
+        )
+
+        return corrcoef
+
+    @staticmethod
+    def _sql_expression_day_or_less(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f'date_trunc("{sql_name}", {column_name})'
+
+    @staticmethod
+    def _sql_expression_week_or_more(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f'date_part("{sql_name}", {column_name})'

@@ -28,7 +28,7 @@ __revision__ = "$Id$"
 
 def get_tests(config={}):
     tests = []
-    from Cryptodome.SelfTest.Random import test_random;         tests += test_random.get_tests(config=config)
+    from Crypto.SelfTest.Random import test_random;         tests += test_random.get_tests(config=config)
     return tests
 
 if __name__ == '__main__':

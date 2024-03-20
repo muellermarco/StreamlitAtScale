@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.CAST"""
+"""Self-test suite for Crypto.Cipher.CAST"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import bchr
+from Crypto.Util.py3compat import bchr
 
-from Cryptodome.Cipher import CAST
+from Crypto.Cipher import CAST
 
 # This is a list of (plaintext, ciphertext, key) tuples.
 test_data = [

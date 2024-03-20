@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  SelfTest/Hash/common.py: Common code for Cryptodome.SelfTest.Hash
+#  SelfTest/Hash/common.py: Common code for Crypto.SelfTest.Hash
 #
 # Written in 2008 by Dwayne C. Litzenberger <dlitz@dlitz.net>
 #
@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-testing for PyCryptodome hash modules"""
+"""Self-testing for PyCrypto hash modules"""
 
 import unittest
 from binascii import a2b_hex, b2a_hex, hexlify
 
-from Cryptodome.Util.py3compat import b
-from Cryptodome.Util.strxor import strxor_c
+from Crypto.Util.py3compat import b
+from Crypto.Util.strxor import strxor_c
 
 class _NoDefault: pass        # sentinel object
 def _extract(d, k, default=_NoDefault):
@@ -176,7 +176,7 @@ class CipherStreamingSelfTest(CipherSelfTest):
 
 class RoundtripTest(unittest.TestCase):
     def __init__(self, module, params):
-        from Cryptodome import Random
+        from Crypto import Random
         unittest.TestCase.__init__(self)
         self.module = module
         self.iv = Random.get_random_bytes(module.block_size)

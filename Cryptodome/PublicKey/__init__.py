@@ -18,7 +18,7 @@
 # SOFTWARE.
 # ===================================================================
 
-from Cryptodome.Util.asn1 import (DerSequence, DerInteger, DerBitString,
+from Crypto.Util.asn1 import (DerSequence, DerInteger, DerBitString,
                              DerObjectId, DerNull)
 
 

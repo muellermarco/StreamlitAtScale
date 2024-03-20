@@ -22,9 +22,9 @@
 
 import struct
 
-from Cryptodome.Util.py3compat import byte_string, bchr, bord
+from Crypto.Util.py3compat import byte_string, bchr, bord
 
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long
+from Crypto.Util.number import long_to_bytes, bytes_to_long
 
 __all__ = ['DerObject', 'DerInteger', 'DerBoolean', 'DerOctetString',
            'DerNull', 'DerSequence', 'DerObjectId', 'DerBitString', 'DerSetOf']
@@ -265,7 +265,7 @@ class DerInteger(DerObject):
 
         An example of encoding is::
 
-          >>> from Cryptodome.Util.asn1 import DerInteger
+          >>> from Crypto.Util.asn1 import DerInteger
           >>> from binascii import hexlify, unhexlify
           >>> int_der = DerInteger(9)
           >>> print hexlify(int_der.encode())
@@ -360,7 +360,7 @@ class DerBoolean(DerObject):
 
     An example of encoding is::
 
-    >>> from Cryptodome.Util.asn1 import DerBoolean
+    >>> from Crypto.Util.asn1 import DerBoolean
     >>> bool_der = DerBoolean(True)
     >>> print(bool_der.encode().hex())
 
@@ -450,7 +450,7 @@ class DerSequence(DerObject):
 
         An example of encoding is:
 
-          >>> from Cryptodome.Util.asn1 import DerSequence, DerInteger
+          >>> from Crypto.Util.asn1 import DerSequence, DerInteger
           >>> from binascii import hexlify, unhexlify
           >>> obj_der = unhexlify('070102')
           >>> seq_der = DerSequence([4])
@@ -656,7 +656,7 @@ class DerOctetString(DerObject):
 
     An example of encoding is:
 
-    >>> from Cryptodome.Util.asn1 import DerOctetString
+    >>> from Crypto.Util.asn1 import DerOctetString
     >>> from binascii import hexlify, unhexlify
     >>> os_der = DerOctetString(b'\\xaa')
     >>> os_der.payload += b'\\xbb'
@@ -710,7 +710,7 @@ class DerObjectId(DerObject):
 
     An example of encoding is:
 
-    >>> from Cryptodome.Util.asn1 import DerObjectId
+    >>> from Crypto.Util.asn1 import DerObjectId
     >>> from binascii import hexlify, unhexlify
     >>> oid_der = DerObjectId("1.2")
     >>> oid_der.value += ".840.113549.1.1.1"
@@ -828,7 +828,7 @@ class DerBitString(DerObject):
 
     An example of encoding is:
 
-    >>> from Cryptodome.Util.asn1 import DerBitString
+    >>> from Crypto.Util.asn1 import DerBitString
     >>> bs_der = DerBitString(b'\\xAA')
     >>> bs_der.value += b'\\xBB'
     >>> print(bs_der.encode().hex())
@@ -917,7 +917,7 @@ class DerSetOf(DerObject):
 
     An example of encoding is:
 
-    >>> from Cryptodome.Util.asn1 import DerBitString
+    >>> from Crypto.Util.asn1 import DerBitString
     >>> from binascii import hexlify, unhexlify
     >>> so_der = DerSetOf([4,5])
     >>> so_der.add(6)

@@ -1,19 +1,13 @@
-from atscale.utils.eda_utils import (
-    _eda_check,
-    _generate_base_table_name,
-    _construct_and_submit_base_table_query,
-    _execute_with_name_collision_handling,
-)
+from inspect import getfullargspec
+from typing import List, Tuple, Dict
+import logging
+
+from atscale.project import project_helpers
 from atscale.db.connections.snowflake import Snowflake
 from atscale.data_model.data_model import DataModel
 from atscale.errors import atscale_errors
-from atscale.utils import validation_utils
-from inspect import getfullargspec
-from typing import List, Tuple, Dict
-from atscale.base.enums import PlatformType, PandasTableExistsActionType
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
-import logging
+from atscale.base import enums
+from atscale.utils import eda_utils, validation_utils
 
 
 logger = logging.getLogger(__name__)
@@ -25,7 +19,7 @@ def linear_regression(
     predictors: List[str],
     prediction_target: str,
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> Dict:
@@ -39,28 +33,31 @@ def linear_regression(
         prediction_target (str): The query name of the numeric feature that will be predicted via linear_regression
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in numeric_features
-        if_exists (PandasTableExistsActionType, optional): The default action the function takes when creating
-                                                           process tables that already exist. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action the function takes when creating
+                                                           process tables that already exist. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that linear regression will write tables to. Defaults to the database associated with the
                               given dbconn.
         write_schema (str): The schema that linear regression will write tables to. Defaults to the schema associated with the
                               given dbconn.
 
-    Raises:
-        UserError:User can't select APPEND as an ActionType.
-        EDAException: User must pass at least one feature to predictors, prediction_target
-
     Returns:
         Dict: A Dict containing the regression coefficients
     """
     if dbconn is not None:
-        if dbconn.platform_type != PlatformType.SNOWFLAKE:
+        if not isinstance(dbconn, Snowflake):
             raise atscale_errors.UnsupportedOperationException(
                 f"This function is only supported for Snowflake at this time."
             )
 
     inspection = getfullargspec(linear_regression)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
+
+    project_helpers._check_published(data_model.project)
 
     if not write_database:
         write_database = dbconn._database
@@ -68,7 +65,7 @@ def linear_regression(
     if not write_schema:
         write_schema = dbconn._schema
 
-    _eda_check(
+    eda_utils._eda_check(
         data_model=data_model,
         numeric_features=predictors + [prediction_target],
         granularity_levels=granularity_levels,
@@ -76,14 +73,12 @@ def linear_regression(
     )
 
     if len(predictors) < 1:
-        raise atscale_errors.EDAException(
-            "Make sure at least one valid feature is passed via predictors"
-        )
+        raise ValueError("Make sure at least one valid feature is passed via predictors")
 
-    base_table_name = _generate_base_table_name()
+    base_table_name = eda_utils._generate_base_table_name()
     three_part_name = f"{write_database}.{write_schema}.{base_table_name}"
 
-    _construct_and_submit_base_table_query(
+    eda_utils._construct_and_submit_base_table_query(
         dbconn=dbconn,
         data_model=data_model,
         base_table_name=three_part_name,
@@ -107,7 +102,7 @@ def linear_regression(
         dbconn=dbconn,
     )
 
-    _execute_with_name_collision_handling(
+    eda_utils._execute_with_name_collision_handling(
         dbconn=dbconn,
         query_list=query_statements_a,
         drop_list=drop_statements_a,
@@ -123,11 +118,9 @@ def linear_regression(
         > 0
     )
     if has_linearly_dependent_columns:
-        raise atscale_errors.EDAException(
-            f"Make sure features passed to predictors are not linearly dependent"
-        )
+        raise ValueError(f"Make sure features passed to predictors are not linearly dependent")
 
-    _execute_with_name_collision_handling(
+    eda_utils._execute_with_name_collision_handling(
         dbconn=dbconn,
         query_list=query_statements_b,
         drop_list=drop_statements_b,

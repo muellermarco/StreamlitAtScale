@@ -22,18 +22,18 @@
 
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bord, tobytes, _copy_bytes
+from Crypto.Util.py3compat import bord, tobytes, _copy_bytes
 
-from Cryptodome.Hash import BLAKE2s
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Hash import BLAKE2s
+from Crypto.Random import get_random_bytes
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t,
                                   c_uint8_ptr)
 
 
-_raw_poly1305 = load_pycryptodome_raw_lib("Cryptodome.Hash._poly1305",
+_raw_poly1305 = load_pycryptodome_raw_lib("Crypto.Hash._poly1305",
                         """
                         int poly1305_init(void **state,
                                           const uint8_t *r,
@@ -179,10 +179,10 @@ def new(**kwargs):
     Args:
         key (bytes/bytearray/memoryview):
             The 32-byte key for the Poly1305 object.
-        cipher (module from ``Cryptodome.Cipher``):
+        cipher (module from ``Crypto.Cipher``):
             The cipher algorithm to use for deriving the Poly1305
             key pair *(r, s)*.
-            It can only be ``Cryptodome.Cipher.AES`` or ``Cryptodome.Cipher.ChaCha20``.
+            It can only be ``Crypto.Cipher.AES`` or ``Crypto.Cipher.ChaCha20``.
         nonce (bytes/bytearray/memoryview):
             Optional. The non-repeatable value to use for the MAC of this message.
             It must be 16 bytes long for ``AES`` and 8 or 12 bytes for ``ChaCha20``.

@@ -31,13 +31,13 @@
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import b, tobytes, bchr
-from Cryptodome.Util.number import long_to_bytes
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import b, tobytes, bchr
+from Crypto.Util.number import long_to_bytes
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Cipher import AES
-from Cryptodome.Hash import SHAKE128
+from Crypto.Cipher import AES
+from Crypto.Hash import SHAKE128
 
 
 def get_tag_random(tag, length):
@@ -158,7 +158,7 @@ class OcbTests(unittest.TestCase):
         self.assertEqual(len(mac), 16)
 
     def test_invalid_mac(self):
-        from Cryptodome.Util.strxor import strxor_c
+        from Crypto.Util.strxor import strxor_c
         cipher = AES.new(self.key_128, AES.MODE_OCB, nonce=self.nonce_96)
         ct, mac = cipher.encrypt_and_digest(self.data)
 

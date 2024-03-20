@@ -20,15 +20,15 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHA3_384"""
+"""Self-test suite for Crypto.Hash.SHA3_384"""
 
 import unittest
 from binascii import hexlify
 
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Hash import SHA3_384 as SHA3
-from Cryptodome.Util.py3compat import b
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Hash import SHA3_384 as SHA3
+from Crypto.Util.py3compat import b
 
 
 class APITest(unittest.TestCase):

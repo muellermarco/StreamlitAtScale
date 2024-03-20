@@ -31,8 +31,8 @@
 import os
 import abc
 import sys
-from Cryptodome.Util.py3compat import byte_string
-from Cryptodome.Util._file_system import pycryptodome_filename
+from Crypto.Util.py3compat import byte_string
+from Crypto.Util._file_system import pycryptodome_filename
 
 #
 # List of file suffixes for Python extensions
@@ -75,6 +75,12 @@ try:
     # See https://github.com/Legrandin/pycryptodome/issues/228
     if '__pypy__' not in sys.builtin_module_names and sys.flags.optimize == 2:
         raise ImportError("CFFI with optimize=2 fails due to pycparser bug.")
+
+    # cffi still uses PyUnicode_GetSize, which was removed in Python 3.12
+    # thus leading to a crash on cffi.dlopen()
+    # See https://groups.google.com/u/1/g/python-cffi/c/oZkOIZ_zi5k
+    if sys.version_info >= (3, 12) and os.name == "nt":
+        raise ImportError("CFFI is not compatible with Python 3.12 on Windows")
 
     from cffi import FFI
 
@@ -288,7 +294,7 @@ def load_pycryptodome_raw_lib(name, cdecl):
     """Load a shared library and return a handle to it.
 
     @name,  the name of the library expressed as a PyCryptodome module,
-            for instance Cryptodome.Cipher._raw_cbc.
+            for instance Crypto.Cipher._raw_cbc.
 
     @cdecl, the C function declarations.
     """

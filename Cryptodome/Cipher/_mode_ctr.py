@@ -28,16 +28,16 @@ __all__ = ['CtrMode']
 
 import struct
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
                                   create_string_buffer, get_raw_buffer,
                                   SmartPointer, c_size_t, c_uint8_ptr,
                                   is_writeable_buffer)
 
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Util.py3compat import _copy_bytes, is_native_int
-from Cryptodome.Util.number import long_to_bytes
+from Crypto.Random import get_random_bytes
+from Crypto.Util.py3compat import _copy_bytes, is_native_int
+from Crypto.Util.number import long_to_bytes
 
-raw_ctr_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_ctr", """
+raw_ctr_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_ctr", """
                     int CTR_start_operation(void *cipher,
                                             uint8_t   initialCounterBlock[],
                                             size_t    initialCounterBlock_len,
@@ -282,7 +282,7 @@ def _create_ctr_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        The underlying block cipher, a module from ``Cryptodome.Cipher``.
+        The underlying block cipher, a module from ``Crypto.Cipher``.
 
     :Keywords:
       nonce : bytes/bytearray/memoryview
@@ -305,7 +305,7 @@ def _create_ctr_cipher(factory, **kwargs):
         The counter number is encoded in big endian mode.
 
       counter : object
-        Instance of ``Cryptodome.Util.Counter``, which allows full customization
+        Instance of ``Crypto.Util.Counter``, which allows full customization
         of the counter block. This parameter is incompatible to both ``nonce``
         and ``initial_value``.
 
@@ -327,7 +327,7 @@ def _create_ctr_cipher(factory, **kwargs):
                         " are mutually exclusive")
 
     if counter is None:
-        # Cryptodome.Util.Counter is not used
+        # Crypto.Util.Counter is not used
         if nonce is None:
             if factory.block_size < 16:
                 raise TypeError("Impossible to create a safe nonce for short"
@@ -359,7 +359,7 @@ def _create_ctr_cipher(factory, **kwargs):
                        counter_len,
                        False)                          # little_endian
 
-    # Cryptodome.Util.Counter is used
+    # Crypto.Util.Counter is used
 
     # 'counter' used to be a callable object, but now it is
     # just a dictionary for backward compatibility.
@@ -372,7 +372,7 @@ def _create_ctr_cipher(factory, **kwargs):
         little_endian = _counter.pop("little_endian")
     except KeyError:
         raise TypeError("Incorrect counter object"
-                        " (use Cryptodome.Util.Counter.new)")
+                        " (use Crypto.Util.Counter.new)")
 
     # Compute initial counter block
     words = []

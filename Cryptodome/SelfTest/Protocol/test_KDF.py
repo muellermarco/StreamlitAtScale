@@ -24,18 +24,18 @@ import re
 import unittest
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import b, bchr
+from Crypto.Util.py3compat import b, bchr
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
-from Cryptodome.Hash import SHA1, HMAC, SHA256, MD5, SHA224, SHA384, SHA512
-from Cryptodome.Cipher import AES, DES3
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors, load_test_vectors_wycheproof
+from Crypto.Hash import SHA1, HMAC, SHA256, MD5, SHA224, SHA384, SHA512
+from Crypto.Cipher import AES, DES3
 
-from Cryptodome.Protocol.KDF import (PBKDF1, PBKDF2, _S2V, HKDF, scrypt,
+from Crypto.Protocol.KDF import (PBKDF1, PBKDF2, _S2V, HKDF, scrypt,
                                  bcrypt, bcrypt_check,
                                  SP800_108_Counter)
 
-from Cryptodome.Protocol.KDF import _bcrypt_decode
+from Crypto.Protocol.KDF import _bcrypt_decode
 
 
 def t2b(t):
@@ -711,7 +711,7 @@ class TestVectorsHKDFWycheproof(unittest.TestCase):
 
 
 def load_hash_by_name(hash_name):
-    return __import__("Cryptodome.Hash." + hash_name, globals(), locals(), ["new"])
+    return __import__("Crypto.Hash." + hash_name, globals(), locals(), ["new"])
 
 
 class SP800_180_Counter_Tests(unittest.TestCase):

@@ -1,13 +1,11 @@
 import getpass
 import cryptocode
 import logging
-import inspect
-from atscale.errors import atscale_errors
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
-from atscale.db.sqlalchemy_connection import SQLAlchemyConnection
-from atscale.base.enums import PlatformType
+
+from atscale.errors import atscale_errors
 from atscale.utils import validation_utils
+from atscale.db.sqlalchemy_connection import SQLAlchemyConnection
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +30,7 @@ class MSSQL(SQLAlchemyConnection):
     At present time, the string is "ODBC Driver 17 for SQL Server"
     """
 
-    platform_type: PlatformType = PlatformType.MSSQL
+    platform_type_str: str = "mssql"
 
     def __init__(
         self,
@@ -70,7 +68,7 @@ class MSSQL(SQLAlchemyConnection):
         super().__init__(warehouse_id)
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self._username = username
         self._host = host
@@ -79,7 +77,7 @@ class MSSQL(SQLAlchemyConnection):
         self._schema = schema
         self._port = port
         if password:
-            self._password = cryptocode.encrypt(password, self.platform_type.value)
+            self._password = cryptocode.encrypt(password, self.platform_type_str)
         else:
             self._password = None
 
@@ -193,7 +191,7 @@ class MSSQL(SQLAlchemyConnection):
         # validate the non-null inputs
         if value is None:
             raise ValueError(f"The following required parameters are None: value")
-        self._password = cryptocode.encrypt(value, self.platform_type.value)
+        self._password = cryptocode.encrypt(value, self.platform_type_str)
         self.dispose_engine()
 
     @property
@@ -221,9 +219,9 @@ class MSSQL(SQLAlchemyConnection):
         if not self._password:
             self._password = cryptocode.encrypt(
                 getpass.getpass(prompt="Please enter your Synapse password: "),
-                self.platform_type.value,
+                self.platform_type_str,
             )
-        password = cryptocode.decrypt(self._password, self.platform_type.value)
+        password = cryptocode.decrypt(self._password, self.platform_type_str)
 
         # Below is an example of passing through the exact string to pyodbc. I'm using the sqlalchemy URL to pass in autocommit becuase of an azure issue.
         # There may be another way to do that with the pass through approach but not sure, as that has to be set not just on connectino but driver I think,
@@ -258,3 +256,17 @@ class MSSQL(SQLAlchemyConnection):
             str: the queriable location of the table
         """
         return f"{self._column_quote()}{self.database}{self._column_quote()}.{self._column_quote()}{self.schema}{self._column_quote()}.{self._column_quote()}{table_name}{self._column_quote()}"
+
+    @staticmethod
+    def _sql_expression_day_or_less(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"DATETRUNC({sql_name}, {column_name})"
+
+    @staticmethod
+    def _sql_expression_week_or_more(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"DATEPART({sql_name}, {column_name})"

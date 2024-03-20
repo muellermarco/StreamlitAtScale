@@ -1,6 +1,6 @@
 from typing import Union, Iterable
 
-from Cryptodome.Cipher._mode_ecb import EcbMode
+from Crypto.Cipher._mode_ecb import EcbMode
 
 MODE_ECB: int
 

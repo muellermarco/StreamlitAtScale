@@ -1,8 +1,8 @@
 from typing import Union, Optional, Callable
 from typing_extensions import Protocol
 
-from Cryptodome.PublicKey.DSA import DsaKey
-from Cryptodome.PublicKey.ECC import EccKey
+from Crypto.PublicKey.DSA import DsaKey
+from Crypto.PublicKey.ECC import EccKey
 
 class Hash(Protocol):
     def digest(self) -> bytes: ...

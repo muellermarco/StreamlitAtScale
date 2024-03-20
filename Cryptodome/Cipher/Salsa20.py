@@ -22,16 +22,16 @@
 # SOFTWARE.
 # ===================================================================
 
-from Cryptodome.Util.py3compat import _copy_bytes
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util.py3compat import _copy_bytes
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   create_string_buffer,
                                   get_raw_buffer, VoidPointer,
                                   SmartPointer, c_size_t,
                                   c_uint8_ptr, is_writeable_buffer)
 
-from Cryptodome.Random import get_random_bytes
+from Crypto.Random import get_random_bytes
 
-_raw_salsa20_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._Salsa20",
+_raw_salsa20_lib = load_pycryptodome_raw_lib("Crypto.Cipher._Salsa20",
                     """
                     int Salsa20_stream_init(uint8_t *key, size_t keylen,
                                             uint8_t *nonce, size_t nonce_len,
@@ -151,7 +151,7 @@ def new(key, nonce=None):
         it back via the ``nonce`` attribute of the returned object).
     :type nonce: bytes/bytearray/memoryview
 
-    :Return: a :class:`Cryptodome.Cipher.Salsa20.Salsa20Cipher` object
+    :Return: a :class:`Crypto.Cipher.Salsa20.Salsa20Cipher` object
     """
 
     if nonce is None:

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  SelfTest/Util/test_number.py: Self-test for parts of the Cryptodome.Util.number module
+#  SelfTest/Util/test_number.py: Self-test for parts of the Crypto.Util.number module
 #
 # Written in 2008 by Dwayne C. Litzenberger <dlitz@dlitz.net>
 #
@@ -22,16 +22,16 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-tests for (some of) Cryptodome.Util.number"""
+"""Self-tests for (some of) Crypto.Util.number"""
 
 import math
 import unittest
 
-from Cryptodome.Util.py3compat import *
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import *
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Util import number
-from Cryptodome.Util.number import long_to_bytes
+from Crypto.Util import number
+from Crypto.Util.number import long_to_bytes
 
 
 class MyError(Exception):
@@ -128,7 +128,7 @@ class MiscTests(unittest.TestCase):
         """Util.number.isPrime"""
         self.assertEqual(number.isPrime(-3), False)     # Regression test: negative numbers should not be prime
         self.assertEqual(number.isPrime(-2), False)     # Regression test: negative numbers should not be prime
-        self.assertEqual(number.isPrime(1), False)      # Regression test: isPrime(1) caused some versions of PyCryptodome to crash.
+        self.assertEqual(number.isPrime(1), False)      # Regression test: isPrime(1) caused some versions of PyCrypto to crash.
         self.assertEqual(number.isPrime(2), True)
         self.assertEqual(number.isPrime(3), True)
         self.assertEqual(number.isPrime(4), False)

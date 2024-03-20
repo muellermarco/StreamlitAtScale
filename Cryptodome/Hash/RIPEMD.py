@@ -19,8 +19,8 @@
 # ===================================================================
 
 # This file exists for backward compatibility with old code that refers to
-# Cryptodome.Hash.RIPEMD
+# Crypto.Hash.RIPEMD
 
-"""Deprecated alias for `Cryptodome.Hash.RIPEMD160`"""
+"""Deprecated alias for `Crypto.Hash.RIPEMD160`"""
 
-from Cryptodome.Hash.RIPEMD160 import new, block_size, digest_size
+from Crypto.Hash.RIPEMD160 import new, block_size, digest_size

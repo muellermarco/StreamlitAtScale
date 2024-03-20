@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.PublicKey.DSA"""
+"""Self-test suite for Crypto.PublicKey.DSA"""
 
 import os
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 import unittest
-from Cryptodome.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
+from Crypto.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
 
 def _sws(s):
     """Remove whitespace from a text or byte string"""
@@ -69,9 +69,9 @@ class DSATest(unittest.TestCase):
 
     def setUp(self):
         global DSA, Random, bytes_to_long, size
-        from Cryptodome.PublicKey import DSA
-        from Cryptodome import Random
-        from Cryptodome.Util.number import bytes_to_long, inverse, size
+        from Crypto.PublicKey import DSA
+        from Crypto import Random
+        from Crypto.Util.number import bytes_to_long, inverse, size
 
         self.dsa = DSA
 
@@ -197,8 +197,8 @@ class DSADomainTest(unittest.TestCase):
 
     def _get_weak_domain(self):
 
-        from Cryptodome.Math.Numbers import Integer
-        from Cryptodome.Math import Primality
+        from Crypto.Math.Numbers import Integer
+        from Crypto.Math import Primality
 
         p = Integer(4)
         while p.size_in_bits() != 1024 or Primality.test_probable_prime(p) != Primality.PROBABLY_PRIME:
@@ -227,7 +227,7 @@ class DSADomainTest(unittest.TestCase):
     def test_construct_error_weak_domain(self):
         """Verify that domain parameters with composite q are rejected"""
 
-        from Cryptodome.Math.Numbers import Integer
+        from Crypto.Math.Numbers import Integer
 
         p, q, g = self._get_weak_domain()
         y =  pow(g, 89, p)

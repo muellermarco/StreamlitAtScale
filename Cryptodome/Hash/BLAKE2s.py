@@ -30,16 +30,16 @@
 
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bord, tobytes
+from Crypto.Util.py3compat import bord, tobytes
 
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Random import get_random_bytes
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t,
                                   c_uint8_ptr)
 
-_raw_blake2s_lib = load_pycryptodome_raw_lib("Cryptodome.Hash._BLAKE2s",
+_raw_blake2s_lib = load_pycryptodome_raw_lib("Crypto.Hash._BLAKE2s",
                         """
                         int blake2s_init(void **state,
                                          const uint8_t *key,

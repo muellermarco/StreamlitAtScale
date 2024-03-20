@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.MD5"""
+"""Self-test suite for Crypto.Hash.MD5"""
 
-from Cryptodome.Util.py3compat import *
-from Cryptodome.Hash import MD5
+from Crypto.Util.py3compat import *
+from Crypto.Hash import MD5
 from binascii import unhexlify
 import unittest
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.st_common import list_test_cases
 
 
 # This is a list of (expected_result, input[, description]) tuples.

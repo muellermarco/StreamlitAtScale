@@ -27,8 +27,8 @@
 import math
 import sys
 import struct
-from Cryptodome import Random
-from Cryptodome.Util.py3compat import iter_range
+from Crypto import Random
+from Crypto.Util.py3compat import iter_range
 
 # Backward compatibility
 _fastmath = None
@@ -62,7 +62,7 @@ def getRandomInteger(N, randfunc=None):
 
     .. deprecated:: 3.0
         This function is for internal use only and may be renamed or removed in
-        the future. Use :func:`Cryptodome.Random.random.getrandbits` instead.
+        the future. Use :func:`Crypto.Random.random.getrandbits` instead.
     """
 
     if randfunc is None:
@@ -83,7 +83,7 @@ def getRandomRange(a, b, randfunc=None):
 
     .. deprecated:: 3.0
         This function is for internal use only and may be renamed or removed in
-        the future. Use :func:`Cryptodome.Random.random.randrange` instead.
+        the future. Use :func:`Crypto.Random.random.randrange` instead.
     """
 
     range_ = b - a - 1
@@ -250,7 +250,7 @@ def getStrongPrime(N, e=0, false_positive_prob=1e-6, randfunc=None):
         randfunc (callable):
           A function that takes a parameter *N* and that returns
           a random byte string of such length.
-          If omitted, :func:`Cryptodome.Random.get_random_bytes` is used.
+          If omitted, :func:`Crypto.Random.get_random_bytes` is used.
     Return:
         The new strong prime.
 
@@ -375,7 +375,7 @@ def isPrime(N, false_positive_prob=1e-6, randfunc=None):
         randfunc (callable):
           A function that takes a parameter *N* and that returns
           a random byte string of such length.
-          If omitted, :func:`Cryptodome.Random.get_random_bytes` is used.
+          If omitted, :func:`Crypto.Random.get_random_bytes` is used.
 
     Return:
         `True` is the input is indeed prime.

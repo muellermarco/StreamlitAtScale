@@ -24,27 +24,27 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.cSHAKE128 and cSHAKE256"""
+"""Self-test suite for Crypto.Hash.cSHAKE128 and cSHAKE256"""
 
 import unittest
 
-from Cryptodome.SelfTest.loader import load_test_vectors
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Hash import cSHAKE128, cSHAKE256, SHAKE128, SHAKE256
-from Cryptodome.Util.py3compat import b, bchr, tobytes
+from Crypto.Hash import cSHAKE128, cSHAKE256, SHAKE128, SHAKE256
+from Crypto.Util.py3compat import b, bchr, tobytes
 
 
 class cSHAKETest(unittest.TestCase):
 
     def test_left_encode(self):
-        from Cryptodome.Hash.cSHAKE128 import _left_encode
+        from Crypto.Hash.cSHAKE128 import _left_encode
         self.assertEqual(_left_encode(0), b'\x01\x00')
         self.assertEqual(_left_encode(1), b'\x01\x01')
         self.assertEqual(_left_encode(256), b'\x02\x01\x00')
 
     def test_bytepad(self):
-        from Cryptodome.Hash.cSHAKE128 import _bytepad
+        from Crypto.Hash.cSHAKE128 import _bytepad
         self.assertEqual(_bytepad(b'', 4), b'\x01\x04\x00\x00')
         self.assertEqual(_bytepad(b'A', 4), b'\x01\x04A\x00')
         self.assertEqual(_bytepad(b'AA', 4), b'\x01\x04AA')

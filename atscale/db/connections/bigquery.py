@@ -1,13 +1,12 @@
-import inspect
 import os
 import logging
 from pandas import DataFrame
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
+from atscale.utils import validation_utils
 from atscale.errors import atscale_errors
 from atscale.db.sql_connection import SQLConnection
-from atscale.base.enums import PlatformType, PandasTableExistsActionType
-from atscale.utils import validation_utils
+from atscale.base import enums
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 class BigQuery(SQLConnection):
     """The implements SQLConnection to handle interactions with Google BigQuery."""
 
-    platform_type: PlatformType = PlatformType.GBQ
+    platform_type_str: str = "bigquery"
 
     def __init__(
         self,
@@ -47,7 +46,7 @@ class BigQuery(SQLConnection):
         super().__init__(warehouse_id)
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if credentials_path:
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
@@ -115,14 +114,6 @@ class BigQuery(SQLConnection):
     #     else:
     #         connection_url = f'bigquery://{self._gbq_project_id}/{self._dataset}'
     #     return connection_url
-    def submit_query(
-        self,
-        query,
-    ):
-        # validate the non-null inputs
-        if query is None:
-            raise ValueError(f"The following required parameters are None: query")
-        return self.submit_queries([query])[0]
 
     def submit_queries(
         self,
@@ -132,7 +123,7 @@ class BigQuery(SQLConnection):
         # not using an SQLAlchemy engine or connection for this, but rather using the built
         # in pandas_gbq support.
         inspection = getfullargspec(self.submit_queries)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         import pandas_gbq
 
@@ -141,11 +132,31 @@ class BigQuery(SQLConnection):
             results.append(pandas_gbq.read_gbq(query, project_id=self.gbq_project_id))
         return results
 
+    def execute_statements(
+        self,
+        statement_list: list,
+    ):
+        """Executes a list of SQL statements. Does not return any results but may trigger an exception.
+
+        Args:
+            statement_list (list): a list of SQL statements to execute.
+        """
+        inspection = getfullargspec(self.execute_statements)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        from google.cloud import bigquery
+
+        client = bigquery.Client(project=self._gbq_project_id)
+        for statement in statement_list:
+            query_job = client.query(statement)
+            # Waits for job to complete, but currently we do nothing with result
+            results = query_job.result()
+
     def write_df_to_db(
         self,
         table_name: str,
         dataframe: DataFrame,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     ):
         # The code combined sqlalchemy with builtin pandas options if we have pandas_gbq installed.
         # I just went with pandas_gbq approaches direclty on a dataframe and removed sqlalchemy for now.
@@ -154,7 +165,12 @@ class BigQuery(SQLConnection):
         # and so that we control the actual table writing and then joining with the model in one method (to ensure those things line up).
 
         inspection = getfullargspec(self.write_df_to_db)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         import pandas_gbq
         import datetime
@@ -186,7 +202,7 @@ class BigQuery(SQLConnection):
                 dataframe,
                 f"{self.dataset}.{table_name}",
                 project_id=self.gbq_project_id,
-                if_exists=if_exists.value,
+                if_exists=if_exists.pandas_value,
                 table_schema=schema_edits,
             )
         except ArrowTypeError as err:
@@ -195,26 +211,6 @@ class BigQuery(SQLConnection):
                 self.execute_statements([sql])
                 logger.error("Issue with column types of inbound dataframe, dropping table")
                 raise (err)
-
-    def execute_statements(
-        self,
-        statement_list: list,
-    ):
-        """Executes a list of SQL statements. Does not return any results but may trigger an exception.
-
-        Args:
-            statement_list (list): a list of SQL statements to execute.
-        """
-        inspection = getfullargspec(self.execute_statements)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
-
-        from google.cloud import bigquery
-
-        client = bigquery.Client(project=self._gbq_project_id)
-        for statement in statement_list:
-            query_job = client.query(statement)
-            # Waits for job to complete, but currently we do nothing with result
-            results = query_job.result()
 
     def _create_table_path(
         self,
@@ -229,3 +225,17 @@ class BigQuery(SQLConnection):
             str: the queriable location of the table
         """
         return f"{self._column_quote()}{self.gbq_project_id}{self._column_quote()}.{self._column_quote()}{self.dataset}{self._column_quote()}.{self._column_quote()}{table_name}{self._column_quote()}"
+
+    @staticmethod
+    def _sql_expression_day_or_less(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"date_trunc( {column_name}, {sql_name})"
+
+    @staticmethod
+    def _sql_expression_week_or_more(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"EXTRACT({sql_name} from {column_name})"

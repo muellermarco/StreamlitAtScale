@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.Blowfish"""
+"""Self-test suite for Crypto.Cipher.Blowfish"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import bchr
+from Crypto.Util.py3compat import bchr
 
-from Cryptodome.Cipher import Blowfish
+from Crypto.Cipher import Blowfish
 
 # This is a list of (plaintext, ciphertext, key) tuples.
 test_data = [

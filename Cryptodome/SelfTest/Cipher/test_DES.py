@@ -22,11 +22,11 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Cipher.DES"""
+"""Self-test suite for Crypto.Cipher.DES"""
 
 import unittest
 
-from Cryptodome.Cipher import DES
+from Crypto.Cipher import DES
 
 # This is a list of (plaintext, ciphertext, key, description) tuples.
 SP800_17_B1_KEY = '01' * 8

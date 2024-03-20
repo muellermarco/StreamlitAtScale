@@ -18,15 +18,15 @@
 # SOFTWARE.
 # ===================================================================
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t,
                                   c_uint8_ptr)
 
-_raw_sha1_lib = load_pycryptodome_raw_lib("Cryptodome.Hash._SHA1",
+_raw_sha1_lib = load_pycryptodome_raw_lib("Crypto.Hash._SHA1",
                         """
                         #define SHA1_DIGEST_SIZE 20
 

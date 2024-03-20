@@ -22,11 +22,11 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHA"""
+"""Self-test suite for Crypto.Hash.SHA"""
 
 from binascii import hexlify
 
-from Cryptodome.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.loader import load_test_vectors
 
 # Test vectors from various sources
 # This is a list of (expected_result, input[, description]) tuples.
@@ -50,7 +50,7 @@ test_data_various = [
 ]
 
 def get_tests(config={}):
-    from Cryptodome.Hash import SHA1
+    from Crypto.Hash import SHA1
     from .common import make_hash_tests
 
     tests = []

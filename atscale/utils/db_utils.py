@@ -1,30 +1,13 @@
 import logging
 from typing import List, Tuple, Dict, Union, Set, Any
-from atscale.connection.connection import _Connection
+
 from atscale.db.sql_connection import SQLConnection
-from atscale.db.connections import bigquery, databricks, iris, mssql, redshift, snowflake, synapse
 from atscale.errors import atscale_errors
 from atscale.base import enums
 
 
-def enum_to_dbconn(
-    platform_type: enums.PlatformType,
-) -> SQLConnection:
-    """takes enums.PlatformType enum and returns an uninstantiated object of the associated SQLConnection class"""
-    mapping = {
-        enums.PlatformType.GBQ: bigquery.BigQuery,
-        enums.PlatformType.DATABRICKS: databricks.Databricks,
-        enums.PlatformType.IRIS: iris.Iris,
-        enums.PlatformType.MSSQL: mssql.MSSQL,
-        enums.PlatformType.REDSHIFT: redshift.Redshift,
-        enums.PlatformType.SNOWFLAKE: snowflake.Snowflake,
-        enums.PlatformType.SYNAPSE: synapse.Synapse,
-    }
-    return mapping[platform_type]
-
-
 def get_atscale_tablename(
-    atconn: _Connection,
+    atconn: "_Connection",
     warehouse_id: str,
     database: str,
     schema: str,
@@ -39,9 +22,6 @@ def get_atscale_tablename(
         schema (str): The name of the schema for the table
         table_name (str): The name of the table
 
-    Raises:
-        atscale_errors.UserError: If Atscale is unable to find the table this error will be raised
-
     Returns:
         str: The name AtScale shows for the table
     """
@@ -50,29 +30,14 @@ def get_atscale_tablename(
         names=[table_name], aliases=atscale_tables, warning_message="Table name: {} appears as {}"
     )
     if len(missing_name) > 0:
-        raise atscale_errors.UserError(
+        raise atscale_errors.ObjectNotFoundError(
             f"Unable to find table: {table_name}. If the table exists make sure AtScale has access to it"
         )
     return atscale_name[0]
 
 
-def get_database_and_schema(
-    dbconn: SQLConnection,
-) -> Tuple[str, str]:
-    """Returns a tuple of the (database property, schema property) of the sqlconn object. For those objects that don't natively
-    have those properties, a private property was created that maps the native terminology to database and schema
-
-    Args:
-        dbconn (SQLConnection): The connection object to get properies from
-
-    Returns:
-        Tuple[str, str]: the (database, schema)
-    """
-    return dbconn._database, dbconn._schema
-
-
 def get_column_dict(
-    atconn: _Connection,
+    atconn: "_Connection",
     dbconn: SQLConnection,
     warehouse_id: str,
     atscale_table_name: str,
@@ -85,23 +50,20 @@ def get_column_dict(
         atconn (_Connection):  The AtScale connection to use
         dbconn (SQLConnection): The sql connection to use to connect to interact with the data warehouse. Primary used here to get any database and schema references for the connection.
         warehouse_id (str): The id of the warehouse for AtScale to use to reach the new table
-        atscale_table_name (str): the name of the table in the data warehouse as recognized by atscale that corresponds to the dataframe
+        atscale_table_name (str): the name of the table in the data warehouse as recognized by AtScale that corresponds to the dataframe
         dataframe_columns (List[str]): the DataFrame columns that corresponds to the atscale_table_name
 
-    Raises:
-        atscale_errors.UserError: Potential error if the dataframe features columns that are not found within the table referenced by atscale_table_name
     Returns:
         Dict: a Dict object where keys are the column names within the dataframe and the values are the columns as they appear in atscale_table_name as seen by AtScale.
     """
 
-    database, schema = get_database_and_schema(dbconn=dbconn)
     atscale_columns = [
         c[0]
         for c in atconn._get_table_columns(
             warehouse_id=warehouse_id,
             table_name=atscale_table_name,
-            database=database,
-            schema=schema,
+            database=dbconn._database,
+            schema=dbconn._schema,
             expected_columns=dataframe_columns,
         )
     ]
@@ -115,7 +77,7 @@ def get_column_dict(
         warning_message="Column name: {} appears as {}",
     )
     if missing_columns:
-        raise atscale_errors.UserError(
+        raise atscale_errors.ObjectNotFoundError(
             f"Unable to find columns: {missing_columns} in table: {atscale_table_name}."
         )
     column_dict = {original: proper for original, proper in zip(dataframe_columns, proper_columns)}
@@ -124,7 +86,7 @@ def get_column_dict(
 
 
 def _get_key_cols(
-    key_dict: dict,
+    key_dict: Dict,
     dbconn: SQLConnection = None,
     spark_session=None,
 ):
@@ -132,7 +94,7 @@ def _get_key_cols(
         run a query to get the contents of the other join columns.
 
     Args:
-        key_dict (dict): The dictionary describing the necessary key columns
+        key_dict (Dict): The dictionary describing the necessary key columns
         dbconn (SQLConnection): The connection object to query if necessary. Defaults to None.
         sparkSession (pyspark.sql.SparkSession): The pyspark SparkSession to execute the query with. Defaults to None.
 
@@ -205,7 +167,7 @@ def _construct_submit_return_warehouse_stats_one_feat(
     write_schema: str,
     feature: str,
     granularity_levels: List[str],
-    if_exists: enums.PandasTableExistsActionType,
+    if_exists: enums.TableExistsAction,
     samp: bool,
 ) -> float:
     """Constructs and submits a stats query concerning one feature.
@@ -220,7 +182,7 @@ def _construct_submit_return_warehouse_stats_one_feat(
         feature (str): The feature for which calculations are being executed
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in the numeric feature passed
-        if_exists (enums.PandasTableExistsActionType): The default action that the query takes when creating
+        if_exists (enums.TableExistsAction): The default action that the query takes when creating
                                                        a table with a preexisting name
         samp (bool): Whether or not a sample calculation is being calculated
 
@@ -264,9 +226,9 @@ def _construct_submit_return_warehouse_stats_two_feat(
     feature1: str,
     feature2: str,
     granularity_levels: List[str],
-    if_exists: enums.PandasTableExistsActionType,
+    if_exists: enums.TableExistsAction,
     samp: bool = True,
-):
+) -> float:
     """Constructs and submits a stats query concerning two features.
 
     Args:
@@ -279,7 +241,7 @@ def _construct_submit_return_warehouse_stats_two_feat(
         feature (str): The feature for which calculations are being executed
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in the numeric features passed
-        if_exists (enums.PandasTableExistsActionType): The default action that the query takes when creating
+        if_exists (enums.TableExistsAction): The default action that the query takes when creating
                                                        a table with a preexisting name
         samp (bool): Whether or not a sample calculation is being calculated
 

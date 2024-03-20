@@ -25,7 +25,7 @@
 """Self-test for public-key crypto"""
 
 import unittest
-from Cryptodome.SelfTest.PublicKey import (test_DSA, test_RSA,
+from Crypto.SelfTest.PublicKey import (test_DSA, test_RSA,
                                        test_ECC_NIST, test_ECC_25519, test_ECC_448,
                                        test_import_DSA, test_import_RSA,
                                        test_import_ECC, test_ElGamal)

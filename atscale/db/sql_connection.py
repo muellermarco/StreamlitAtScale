@@ -3,10 +3,12 @@ from typing import Dict, List
 import pandas as pd
 from pandas import DataFrame
 from numpy import array, sqrt
-from atscale.base.enums import PlatformType, PandasTableExistsActionType
-from atscale.base.enums import PysparkTableExistsActionType
-from atscale.errors import atscale_errors
+from inspect import getfullargspec
 from copy import deepcopy
+
+from atscale.utils import validation_utils
+from atscale.base import enums
+from atscale.errors import atscale_errors
 
 
 class SQLConnection(ABC):
@@ -30,34 +32,30 @@ class SQLConnection(ABC):
     def warehouse_id(self, value):
         self._warehouse_id = value
 
-    platform_type: PlatformType
-    """The enum representing platform type. Used in validating connections between AtScale DataModels and their 
-        source databases"""
+    platform_type_str: str
+    """The string representation of the platform type, matches with atscale"""
 
     @property
-    def platform_type(self) -> PlatformType:
-        """Getter for the instance type of this SQLConnection
+    def platform_type_str(self) -> str:
+        """Getter for a string representation of the instance type of this SQLConnection
 
         Returns:
-            PlatformType: Member of the PlatformType enum
+            str:
         """
-        return SQLConnection.platform_type
+        return SQLConnection.platform_type_str
 
-    @platform_type.setter
-    def platform_type(
+    @platform_type_str.setter
+    def platform_type_str(
         self,
         value,
     ):
-        """Setter for the platform_type instance variable. This variable is final, please construct a new SQLConnection.
+        """Setter for the platform_type_str instance variable. This variable is final, please construct a new SQLConnection.
 
         Args:
             value: setter cannot be used.
-
-        Raises:
-            Exception: Raises a value if the setter is attempted.
         """
         raise atscale_errors.UnsupportedOperationException(
-            "The platform type of a SQLConnection class is final; it cannot be altered."
+            "The platform type string of a SQLConnection class is final; it cannot be altered."
         )
 
     @abstractmethod
@@ -65,7 +63,6 @@ class SQLConnection(ABC):
         """Clears any authentication information, like password or token from the connection."""
         raise NotImplementedError
 
-    @abstractmethod
     def submit_query(
         self,
         query: str,
@@ -78,22 +75,39 @@ class SQLConnection(ABC):
         Returns:
             DataFrame: the results of executing the SQL statement or query parameter, read into a DataFrame
         """
-        raise NotImplementedError
+        inspection = getfullargspec(self.submit_query)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        return self.submit_queries([query])[0]
 
     @abstractmethod
     def submit_queries(
         self,
         query_list: list,
-    ) -> list:
+    ) -> List:
         """Submits a list of queries, collecting the results in a list of dictionaries.
 
         Args:
             query_list (list): a list of queries to submit.
 
         Returns:
-            list(DataFrame): A list of pandas DataFrames containing the results of the queries.
+            List(DataFrame): A list of pandas DataFrames containing the results of the queries.
         """
         raise NotImplementedError
+
+    def execute_statement(
+        self,
+        statement: str,
+    ):
+        """This executes a single SQL statements. Does not return any results but may trigger an exception.
+
+        Args:
+            statement (str): SQL statement to be executed
+        """
+        inspection = getfullargspec(self.execute_statement)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        self.execute_statements([statement])
 
     @abstractmethod
     def execute_statements(
@@ -124,8 +138,8 @@ class SQLConnection(ABC):
         self,
         table_name: str,
         dataframe: DataFrame,
-        dtypes: dict = None,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        dtypes: Dict = None,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         chunksize: int = 1000,
     ):
         """Writes the provided pandas DataFrame into the provided table name. Can pass in if_exists to indicate the intended behavior if
@@ -134,10 +148,10 @@ class SQLConnection(ABC):
         Args:
             table_name (str): What table to write the dataframe into
             dataframe (DataFrame): The pandas DataFrame to write into the table
-            dtypes (dict, optional): the datatypes of the passed dataframe. Keys should match the column names. Defaults to None
+            dtypes (Dict, optional): the datatypes of the passed dataframe. Keys should match the column names. Defaults to None
                 and type will be text.
-            if_exists (PandasTableExistsActionType, optional): The intended behavior in case of table name collisions.
-                Defaults to PandasTableExistsActionType.FAIL.
+            if_exists (enums.TableExistsAction, optional): The intended behavior in case of table name collisions.
+                Defaults to enums.TableExistsAction.ERROR.
             chunksize (int, optional): the chunksize for the write operation.
         """
         raise NotImplementedError
@@ -148,7 +162,7 @@ class SQLConnection(ABC):
         jdbc_format: str,
         jdbc_options: Dict[str, str],
         table_name: str = None,
-        if_exists: PysparkTableExistsActionType = PysparkTableExistsActionType.ERROR,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     ):
         """Writes the provided pyspark DataFrame into the provided table name via jdbc. Can pass in if_exists to indicate the intended behavior if
             the provided table name is already taken.
@@ -158,8 +172,8 @@ class SQLConnection(ABC):
             jdbc_format (str): the driver class name. For example: 'jdbc', 'net.snowflake.spark.snowflake', 'com.databricks.spark.redshift'
             jdbc_options (Dict[str,str]): Case-insensitive to specify connection options for jdbc
             table_name (str): What table to write the dataframe into, can be none if 'dbtable' option specified
-            if_exists (PysparkTableExistsActionType, optional): The intended behavior in case of table name collisions.
-                Defaults to PysparkTableExistsActionType.ERROR.
+            if_exists (enums.TableExistsAction, optional): The intended behavior in case of table name collisions.
+                Defaults to enums.TableExistsAction.ERROR.
         """
         try:
             from pyspark.sql import SparkSession
@@ -172,7 +186,7 @@ class SQLConnection(ABC):
         # quick check on passed tablename parameters
         if jdbc_copy.get("dbtable") is None:
             if table_name is None:
-                raise atscale_errors.UserError(
+                raise ValueError(
                     "A table name must be specified for the written table. This can be done "
                     'either through the jdbc_options key "dbtable" or the table_name function parameter'
                 )
@@ -180,7 +194,7 @@ class SQLConnection(ABC):
                 jdbc_copy["dbtable"] = table_name
         elif table_name is not None:
             if table_name != jdbc_copy.get("dbtable"):
-                raise atscale_errors.UserError(
+                raise ValueError(
                     'Different table names passed via the jdbc_options key "dbtable" '
                     "and the table_name function parameter. Please get one of the 2 options"
                 )
@@ -191,12 +205,12 @@ class SQLConnection(ABC):
 
     def _verify(
         self,
-        con: dict,
+        con: Dict,
     ) -> bool:
         if con is None:
             return False
 
-        return self.platform_type.value == con.get("platformType")
+        return self.platform_type_str == con.get("platformType")
 
     def _create_table_path(
         self,
@@ -237,7 +251,7 @@ class SQLConnection(ABC):
         write_schema: str,
         feature: str,
         granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
+        if_exists: enums.TableExistsAction,
         samp: bool,
     ):
         from atscale.utils.eda_utils import _Stats, _stats_connection_wrapper
@@ -268,7 +282,7 @@ class SQLConnection(ABC):
         write_schema: str,
         feature: str,
         granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
+        if_exists: enums.TableExistsAction,
         samp: bool,
     ):
         return sqrt(
@@ -292,7 +306,7 @@ class SQLConnection(ABC):
         feature_1: str,
         feature_2: str,
         granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
+        if_exists: enums.TableExistsAction,
         samp: bool,
     ):
         from atscale.utils.eda_utils import _Stats, _stats_connection_wrapper
@@ -324,7 +338,7 @@ class SQLConnection(ABC):
         feature_1: str,
         feature_2: str,
         granularity_levels: List[str],
-        if_exists: PandasTableExistsActionType,
+        if_exists: enums.TableExistsAction,
     ):
         from atscale.utils.eda_utils import _Stats, _stats_connection_wrapper
 
@@ -350,3 +364,17 @@ class SQLConnection(ABC):
         cov = array(stats_obj.query_dict["cov"])[0][0]
 
         return cov / sqrt(v1 * v2)
+
+    @staticmethod
+    def _sql_expression_day_or_less(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"date_trunc({sql_name}, {column_name})"
+
+    @staticmethod
+    def _sql_expression_week_or_more(
+        sql_name: str,
+        column_name: str,
+    ):
+        return f"date_part({sql_name}, {column_name})"

@@ -28,20 +28,20 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Util.py3compat import bchr, bord, iter_range
-import Cryptodome.Util.number
-from Cryptodome.Util.number import (ceil_div,
+from Crypto.Util.py3compat import bchr, bord, iter_range
+import Crypto.Util.number
+from Crypto.Util.number import (ceil_div,
                                 long_to_bytes,
                                 bytes_to_long
                                 )
-from Cryptodome.Util.strxor import strxor
-from Cryptodome import Random
+from Crypto.Util.strxor import strxor
+from Crypto import Random
 
 
 class PSS_SigScheme:
     """A signature object for ``RSASSA-PSS``.
     Do not instantiate directly.
-    Use :func:`Cryptodome.Signature.pss.new`.
+    Use :func:`Crypto.Signature.pss.new`.
     """
 
     def __init__(self, key, mgfunc, saltLen, randfunc):
@@ -79,7 +79,7 @@ class PSS_SigScheme:
         `section 8.1.1 of RFC8017 <https://tools.ietf.org/html/rfc8017#section-8.1.1>`_.
 
         :parameter msg_hash:
-            This is an object from the :mod:`Cryptodome.Hash` package.
+            This is an object from the :mod:`Crypto.Hash` package.
             It has been used to digest the message to sign.
         :type msg_hash: hash object
 
@@ -99,7 +99,7 @@ class PSS_SigScheme:
         else:
             mgf = self._mgfunc
 
-        modBits = Cryptodome.Util.number.size(self._key.n)
+        modBits = Crypto.Util.number.size(self._key.n)
 
         # See 8.1.1 in RFC3447
         k = ceil_div(modBits, 8)  # k is length in bytes of the modulus
@@ -107,10 +107,11 @@ class PSS_SigScheme:
         em = _EMSA_PSS_ENCODE(msg_hash, modBits-1, self._randfunc, mgf, sLen)
         # Step 2a (OS2IP)
         em_int = bytes_to_long(em)
-        # Step 2b (RSASP1)
-        m_int = self._key._decrypt(em_int)
-        # Step 2c (I2OSP)
-        signature = long_to_bytes(m_int, k)
+        # Step 2b (RSASP1) and Step 2c (I2OSP)
+        signature = self._key._decrypt_to_bytes(em_int)
+        # Verify no faults occurred
+        if em_int != pow(bytes_to_long(signature), self._key.e, self._key.n):
+            raise ValueError("Fault detected in RSA private key operation")
         return signature
 
     def verify(self, msg_hash, signature):
@@ -122,7 +123,7 @@ class PSS_SigScheme:
 
         :parameter msg_hash:
             The hash that was carried out over the message. This is an object
-            belonging to the :mod:`Cryptodome.Hash` module.
+            belonging to the :mod:`Crypto.Hash` module.
         :type parameter: hash object
 
         :parameter signature:
@@ -142,7 +143,7 @@ class PSS_SigScheme:
         else:
             mgf = lambda x, y: MGF1(x, y, msg_hash)
 
-        modBits = Cryptodome.Util.number.size(self._key.n)
+        modBits = Crypto.Util.number.size(self._key.n)
 
         # See 8.1.2 in RFC3447
         k = ceil_div(modBits, 8)  # Convert from bits to bytes
@@ -173,12 +174,12 @@ def MGF1(mgfSeed, maskLen, hash_gen):
     :type maskLen: integer
 
     :param hash_gen:
-        A module or a hash object from :mod:`Cryptodome.Hash`
+        A module or a hash object from :mod:`Crypto.Hash`
     :type hash_object:
 
     :return: the mask, as a *byte string*
     """
-    
+
     T = b""
     for counter in iter_range(ceil_div(maskLen, hash_gen.digest_size)):
         c = long_to_bytes(counter, 4)
@@ -331,7 +332,7 @@ def new(rsa_key, **kwargs):
 
     :parameter rsa_key:
       The RSA key to use for signing or verifying the message.
-      This is a :class:`Cryptodome.PublicKey.RSA` object.
+      This is a :class:`Crypto.PublicKey.RSA` object.
       Signing is only possible when ``rsa_key`` is a **private** RSA key.
     :type rsa_key: RSA object
 
@@ -350,8 +351,8 @@ def new(rsa_key, **kwargs):
             If you want to use a different function, for instance still :func:`MGF1`
             but together with another hash, you can do::
 
-                from Cryptodome.Hash import SHA256
-                from Cryptodome.Signature.pss import MGF1
+                from Crypto.Hash import SHA256
+                from Crypto.Signature.pss import MGF1
                 mgf = lambda x, y: MGF1(x, y, SHA256)
 
         *   *salt_bytes* (``integer``) --
@@ -371,7 +372,7 @@ def new(rsa_key, **kwargs):
 
         *   *rand_func* (``callable``) --
             A function that returns random ``bytes``, of the desired length.
-            The default is :func:`Cryptodome.Random.get_random_bytes`.
+            The default is :func:`Crypto.Random.get_random_bytes`.
 
     :return: a :class:`PSS_SigScheme` signature object
     """

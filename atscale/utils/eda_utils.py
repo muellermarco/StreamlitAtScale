@@ -1,22 +1,16 @@
-from atscale.errors.atscale_errors import EDAException, UserError, UnsupportedOperationException
-from atscale.base.enums import PandasTableExistsActionType
-from atscale.base.enums import PandasTableExistsActionType, CheckFeaturesErrMsg, FeatureType
-from atscale.utils.query_utils import _generate_atscale_query, _generate_db_query
-from atscale.utils.model_utils import _check_features
-from atscale.db.sql_connection import SQLConnection
-from atscale.data_model import DataModel
-from atscale.utils.validation_utils import validate_no_duplicates_in_list
-from atscale.utils.metadata_utils import (
-    _get_all_numeric_feature_names,
-    _get_all_categorical_feature_names,
-)
-from atscale.data_model.data_model_helpers import _get_draft_features
-from atscale.base.enums import PlatformType, FeatureType
 from typing import List
 from re import search
 import random
 import string
 import logging
+
+from atscale.db.connections import databricks, snowflake
+from atscale.errors import atscale_errors
+from atscale.base import enums
+from atscale.parsers import dictionary_parser
+from atscale.utils import query_utils, model_utils, validation_utils
+from atscale.db.sql_connection import SQLConnection
+from atscale.data_model import DataModel, data_model_helpers
 
 
 logger = logging.getLogger(__name__)
@@ -26,7 +20,7 @@ def _eda_check(
     data_model: DataModel,
     numeric_features: List[str],
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType,
+    if_exists: enums.TableExistsAction,
 ):
     """Implements common checks across our EDA functionality
 
@@ -35,68 +29,59 @@ def _eda_check(
         numeric_features (List[str]): The query names of the numeric features corresponding to the EDA inputs
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in numeric_features
-        if_exists (PandasTableExistsActionType): The default action the function takes when creating
-                                                 process tables that already exist. Does not accept APPEND. Defaults to FAIL.
-
-    Raises:
-        UserError: Functionality only currently supported for Snowflake
-        UserError: Only REPLACE and FAIL are valid PandasTableExistsActionTypes
+        if_exists (enums.TableExistsAction): The default action the function takes when creating
+                                        process tables that already exist. Does not accept APPEND or IGNORE. Defaults to ERROR.
     """
     # make sure the user inputs a valid action type
-    if if_exists == PandasTableExistsActionType.APPEND:
-        raise UserError(
-            f"The ActionType of APPEND is not valid for this function; only REPLACE AND FAIL are valid."
+    if if_exists in [enums.TableExistsAction.APPEND, enums.TableExistsAction.IGNORE]:
+        raise ValueError(
+            f"The ActionType provided is not valid for this function; only REPLACE AND FAIL are valid."
         )
 
     proj_dict = data_model.project._get_dict()
-
-    all_numeric_features = list(
-        _get_draft_features(
-            project_dict=proj_dict,
-            data_model_name=data_model.name,
-            feature_type=FeatureType.NUMERIC,
-        ).keys()
+    all_features_info = data_model_helpers._get_draft_features(
+        proj_dict, data_model_name=data_model.name
     )
-
-    all_categorical_features = list(
-        _get_draft_features(
-            project_dict=proj_dict,
-            data_model_name=data_model.name,
-            feature_type=FeatureType.CATEGORICAL,
-        ).keys()
+    all_numeric_features = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
+    )
+    all_categorical_features = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.CATEGORICAL.name_val],
     )
 
     # Error checking
     ### Check that features exist in the given DataModel in the first place
-    _check_features(
+    model_utils._check_features(
         features=numeric_features + granularity_levels,
-        check_list=all_numeric_features + all_categorical_features,
-        errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+        check_list=all_features_info,
+        errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
     )
 
     ### Check that numeric/categorical features are in correct categories
-    _check_features(
+    model_utils._check_features(
         features=numeric_features,
         check_list=all_numeric_features,
-        errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+        errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
     )
-    _check_features(
+    model_utils._check_features(
         features=granularity_levels,
         check_list=all_categorical_features,
-        errmsg=CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
+        errmsg=enums.CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
     )
 
     # Make sure no duplicate features exist among those passed
-    numeric_dupes_dict = validate_no_duplicates_in_list(numeric_features)
-    cat_dupes_dict = validate_no_duplicates_in_list(granularity_levels)
+    numeric_dupes_dict = validation_utils.validate_no_duplicates_in_list(numeric_features)
+    cat_dupes_dict = validation_utils.validate_no_duplicates_in_list(granularity_levels)
 
     if numeric_dupes_dict != {}:
-        raise UserError(
+        raise ValueError(
             f"Duplicate features: {list(numeric_dupes_dict.keys())} passed via numeric_features"
         )
 
     if cat_dupes_dict != {}:
-        raise UserError(
+        raise ValueError(
             f"Duplicate features: {list(cat_dupes_dict.keys())} passed via granularity_levels"
         )
 
@@ -120,7 +105,7 @@ def _construct_and_submit_base_table_query(
     base_table_name: str,
     numeric_features: List[str],
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType,
+    if_exists: enums.TableExistsAction,
 ):
     """Constructs and submits the base table query for EDA functionality
 
@@ -131,15 +116,12 @@ def _construct_and_submit_base_table_query(
         numeric_features (List[str]): The query names of the numeric features corresponding to the EDA inputs
         granularity_levels (List[str]): The query names of the categorical features corresponding to the level of
                                         granularity desired in numeric_features
-        if_exists (PandasTableExistsActionType): The default action the function takes when creating
-                                                 process tables that already exist. Does not accept APPEND. Defaults to FAIL.
-
-    Raises:
-        UserError: Name collisiom
+        if_exists (enums.TableExistsAction): The default action the function takes when creating
+                                                 process tables that already exist. Does not accept APPEND. Defaults to ERROR.
     """
-    base_table_atscale_query = _generate_db_query(
+    base_table_atscale_query = query_utils._generate_db_query(
         data_model=data_model,
-        atscale_query=_generate_atscale_query(
+        atscale_query=query_utils._generate_atscale_query(
             data_model=data_model, feature_list=numeric_features + granularity_levels
         ),
     )
@@ -150,15 +132,12 @@ def _construct_and_submit_base_table_query(
     except Exception as e:
         err_msg = str(e)
         if "already exists." in err_msg:
-            if if_exists == PandasTableExistsActionType.REPLACE:
-                try:
-                    dbconn.submit_query(f"DROP TABLE IF EXISTS {base_table_name}; ")
-                    dbconn.submit_query(base_table_query)
-                except Exception as e:
-                    raise e
+            if if_exists == enums.TableExistsAction.OVERWRITE:
+                dbconn.submit_query(f"DROP TABLE IF EXISTS {base_table_name}; ")
+                dbconn.submit_query(base_table_query)
             else:
                 table_name = search("Object (.*?) already exists", err_msg).group(1)
-                raise UserError(
+                raise atscale_errors.CollisionError(
                     f"A table already exists with name: {table_name}. Name collisions between runs are rare "
                     f"but can happen. You can avoid this error by setting if_exists to REPLACE"
                 )
@@ -180,12 +159,8 @@ def _execute_with_name_collision_handling(
         query_list (List[str]): The list of queries to execute the EDA functionality
         drop_list (List[str]): The list of queries to drop process tables
         base_table_name (str): The base table name for the EDA functionality
-        if_exists (PandasTableExistsActionType): The default action the function takes when creating
-                                                 process tables that already exist. Does not accept APPEND. Defaults to FAIL.
-
-    Raises:
-        UserError: Name collision
-        EDAException: Constant-valued feature passed; this is a problem for PCA
+        if_exists (enums.TableExistsAction): The default action the function takes when creating
+                                                 process tables that already exist. Does not accept APPEND. Defaults to ERROR.
     """
     try:
         dbconn.execute_statements(statement_list=query_list)
@@ -193,15 +168,15 @@ def _execute_with_name_collision_handling(
         err_msg = str(e)
         if "already exists." in err_msg:
             # Initial drops if REPLACE, then run off of base table
-            if if_exists == PandasTableExistsActionType.REPLACE:
+            if if_exists == enums.TableExistsAction.OVERWRITE:
                 dbconn.execute_statements(statement_list=drop_list)
                 try:
                     dbconn.execute_statements(statement_list=query_list)
                 except Exception as e:
                     raise e
-            elif if_exists == PandasTableExistsActionType.FAIL:
+            elif if_exists == enums.TableExistsAction.ERROR:
                 table_name = search("Object (.*?) already exists", err_msg).group(1)
-                raise UserError(
+                raise atscale_errors.CollisionError(
                     f"A table already exists with name: {table_name}. Name collisions between runs are rare "
                     f"but can happen. You can avoid this error by setting if_exists to REPLACE"
                 )
@@ -210,7 +185,7 @@ def _execute_with_name_collision_handling(
             # Drop any tables created prior to error firing
             dbconn.execute_statements(statement_list=drop_list)
             dbconn.submit_query(f"DROP TABLE IF EXISTS {base_table_name}; ")
-            raise EDAException("Make sure no constant-valued features are passed to pca")
+            raise ValueError("Make sure no constant-valued features are passed to pca")
 
         else:
             raise e
@@ -234,7 +209,7 @@ def _stats_connection_wrapper(
     write_schema: str,
     stats_obj: _Stats,
     sample: bool = True,
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
 ) -> None:
     """Wrapper to minimize db connections when below functions are called
     dbconn (SQLConnection): The database connection to interact with.
@@ -244,8 +219,8 @@ def _stats_connection_wrapper(
     stats_obj (_Stats): Stores variance and covariance values for a given connection.
     sample (bool, optional): Whether to calculate the sample variance. Defaults to True; otherwise,
                             calculates the population variance.
-    if_exists (PandasTableExistsActionType, optional): The default action that taken when creating
-                                                    a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+    if_exists (enums.TableExistsAction, optional): The default action that taken when creating
+                            a table with a preexisting name. Does not accept APPEND and IGNORE. Defaults to ERROR.
     """
     base_table_name = _generate_base_table_name()
     three_part_name = f"{write_database}.{write_schema}.{base_table_name}"
@@ -301,7 +276,7 @@ def _stats_connection_wrapper(
                 stats_obj.query_dict["cov"] = dbconn.submit_query(cov)
 
         else:
-            raise EDAException(
+            raise ValueError(
                 f'query_key: "{query_key}" is invalid. Valid options are "var" and "cov".'
             )
 
@@ -314,8 +289,8 @@ def _stats_checks(
     data_model: DataModel,
     feature_list: List[str],
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
-) -> None:
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
+):
     """Runs checks on parameters passed to the below functions.
     Args:
         dbconn (SQLConnection): The database connection to interact with.
@@ -323,63 +298,48 @@ def _stats_checks(
         feature_list (List[str]): The feature(s) involved in the calculation.
         granularity_levels (List[str]): The categorical features corresponding to the level of
                                         granularity desired in the given feature.
-        if_exists (PandasTableExistsActionType): The default action that taken when creating
-                                                    a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
-
-    Raises:
-        UserError: Given dbconn must be to Snowflake or Databricks at this point.
-        UserError: User can't select APPEND as an ActionType.
-
-    Returns:
-        None.
+        if_exists (enums.TableExistsAction): The default action that taken when creating
+                                        a table with a preexisting name. Does not accept APPEND or IGNORE. Defaults to ERROR.
     """
-    if (
-        dbconn.platform_type != PlatformType.SNOWFLAKE
-        and dbconn.platform_type != PlatformType.DATABRICKS
-    ):
-        raise UnsupportedOperationException(
+    if not (isinstance(dbconn, snowflake.Snowflake) or isinstance(dbconn, databricks.Databricks)):
+        raise atscale_errors.UnsupportedOperationException(
             f"This function is only supported for Snowflake and Databricks at this time."
         )
 
-    if if_exists == PandasTableExistsActionType.APPEND:
-        raise UserError(
-            f"The ActionType of APPEND is not valid for this function, only REPLACE AND FAIL are valid."
+    if if_exists in [enums.TableExistsAction.APPEND, enums.TableExistsAction.IGNORE]:
+        raise ValueError(
+            f"The ActionType provided is not supported, only REPLACE AND FAIL are valid."
         )
 
     proj_dict = data_model.project._get_dict()
-
-    all_numeric_features = list(
-        _get_draft_features(
-            project_dict=proj_dict,
-            data_model_name=data_model.name,
-            feature_type=FeatureType.NUMERIC,
-        ).keys()
+    all_features_info = data_model_helpers._get_draft_features(
+        proj_dict, data_model_name=data_model.name
     )
-
-    all_categorical_features = list(
-        _get_draft_features(
-            project_dict=proj_dict,
-            data_model_name=data_model.name,
-            feature_type=FeatureType.CATEGORICAL,
-        ).keys()
+    all_numeric_features = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
+    )
+    all_categorical_features = dictionary_parser.filter_dict(
+        to_filter=all_features_info,
+        val_filters=[lambda i: i["feature_type"] == enums.FeatureType.CATEGORICAL.name_val],
     )
 
     # Check that features exist in the given DataModel in the first place
-    _check_features(
+    model_utils._check_features(
         features=feature_list + granularity_levels,
-        check_list=all_numeric_features + all_categorical_features,
-        errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+        check_list=all_features_info,
+        errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
     )
 
     # Check that numeric/categorical features are in correct categories
-    _check_features(
+    model_utils._check_features(
         features=feature_list,
         check_list=all_numeric_features,
-        errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+        errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
     )
 
-    _check_features(
+    model_utils._check_features(
         features=granularity_levels,
         check_list=all_categorical_features,
-        errmsg=CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
+        errmsg=enums.CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
     )

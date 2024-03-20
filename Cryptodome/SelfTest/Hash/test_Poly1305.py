@@ -31,20 +31,20 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash._Poly1305"""
+"""Self-test suite for Crypto.Hash._Poly1305"""
 
 import json
 import unittest
 from binascii import unhexlify, hexlify
 
 from .common import make_mac_tests
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Hash import Poly1305
-from Cryptodome.Cipher import AES, ChaCha20
+from Crypto.Hash import Poly1305
+from Crypto.Cipher import AES, ChaCha20
 
-from Cryptodome.Util.py3compat import tobytes
-from Cryptodome.Util.strxor import strxor_c
+from Crypto.Util.py3compat import tobytes
+from Crypto.Util.strxor import strxor_c
 
 # This is a list of (r+s keypair, data, result, description, keywords) tuples.
 test_data_basic = [
@@ -328,7 +328,7 @@ class Poly1305Test_AES(unittest.TestCase):
         self.assertEqual(d1, d2)
 
     def test_new_negative(self):
-        from Cryptodome.Cipher import DES3
+        from Crypto.Cipher import DES3
 
         self.assertRaises(ValueError, Poly1305.new, key=self.key[:31], cipher=AES)
         self.assertRaises(ValueError, Poly1305.new, key=self.key, cipher=DES3)
@@ -499,7 +499,7 @@ class Poly1305_Basic(object):
 
     @staticmethod
     def new(key, *data, **kwds):
-        from Cryptodome.Hash.Poly1305 import Poly1305_MAC
+        from Crypto.Hash.Poly1305 import Poly1305_MAC
 
         if len(data) == 1:
             msg = data[0]

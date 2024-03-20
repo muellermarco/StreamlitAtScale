@@ -22,9 +22,9 @@
 # SOFTWARE.
 # ===================================================================
 
-#"""Self-test suite for Cryptodome.Hash.RIPEMD160"""
+#"""Self-test suite for Crypto.Hash.RIPEMD160"""
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 # This is a list of (expected_result, input[, description]) tuples.
 test_data = [
@@ -57,7 +57,7 @@ test_data = [
 ]
 
 def get_tests(config={}):
-    from Cryptodome.Hash import RIPEMD160
+    from Crypto.Hash import RIPEMD160
     from .common import make_hash_tests
     return make_hash_tests(RIPEMD160, "RIPEMD160", test_data,
         digest_size=20,

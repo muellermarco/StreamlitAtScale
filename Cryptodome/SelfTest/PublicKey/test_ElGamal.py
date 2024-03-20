@@ -20,16 +20,16 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.PublicKey.ElGamal"""
+"""Self-test suite for Crypto.PublicKey.ElGamal"""
 
 __revision__ = "$Id$"
 
 import unittest
-from Cryptodome.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
-from Cryptodome import Random
-from Cryptodome.PublicKey import ElGamal
-from Cryptodome.Util.number import bytes_to_long
-from Cryptodome.Util.py3compat import *
+from Crypto.SelfTest.st_common import list_test_cases, a2b_hex, b2a_hex
+from Crypto import Random
+from Crypto.PublicKey import ElGamal
+from Crypto.Util.number import bytes_to_long
+from Crypto.Util.py3compat import *
 
 class ElGamalTest(unittest.TestCase):
 

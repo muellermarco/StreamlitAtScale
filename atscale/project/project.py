@@ -1,19 +1,16 @@
-import inspect
 import json
 import logging
 from copy import deepcopy
 from datetime import datetime
 from typing import Dict, List
+from inspect import getfullargspec
 
 from atscale.errors import atscale_errors
 from atscale.connection.connection import _Connection
-from atscale.parsers import project_parser, dataset_parser as dsp
+from atscale.utils import input_utils, project_utils
+from atscale.parsers import project_parser, dataset_parser
 from atscale.utils import input_utils, project_utils, validation_utils
-from atscale.base.enums import RequestType
-from atscale.base import endpoints
-from atscale.base.templates import create_cube_dict
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+from atscale.base import endpoints, enums, templates
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +18,7 @@ logger = logging.getLogger(__name__)
 class Project:
     """Creates an object corresponding to an AtScale project. References an AtScale Client and takes a project ID
     (and optionally a published project ID) to construct an object that houses DataModels, data sets, and any
-    functionality pertaining to projects, such as snapshotting, cloning, publishing, and more.
+    functionality pertaining to project maintenance.
     """
 
     def __init__(
@@ -38,26 +35,25 @@ class Project:
             draft_project_id (str): The draft project's ID
             published_project_id (str, optional): A published project's ID. Defaults to None.
             include_soft_publish (bool, optional): Whether to include soft publishes when looking for publishes. Defaults to False.
-
-        Raises:
-            ValueError: an error if insufficient information provided to establish a connection.
         """
         from atscale.client.client import Client
 
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if not client:
-            raise ValueError("Please create a Client and connect before constructing a project.")
-        client._atconn._check_connected(
-            "Establishing a connection in the atconn field is required."
-        )
+            raise atscale_errors.WorkFlowError(
+                "Please create a Client and connect before constructing a project."
+            )
+        client._atconn._check_connected()
         self._atconn: _Connection = client._atconn
 
         # Please do not store this locally. It's a tmp copy for rest of constructor logic only.
         project_dict = self._atconn._get_draft_project_dict(draft_project_id)
         if not project_dict:
-            raise atscale_errors.UserError("There is no project for the provided draft_project_id.")
+            raise atscale_errors.ObjectNotFoundError(
+                "There is no project for the provided draft_project_id."
+            )
 
         self.__project_id: str = draft_project_id
         self.__project_name: str = project_dict.get("name")
@@ -77,14 +73,14 @@ class Project:
                 published_projects_list, published_project_id
             )
             if published_project_dict is None:
-                raise atscale_errors.UserError("There is no such published project.")
+                raise atscale_errors.ObjectNotFoundError("There is no such published project.")
             elif project_parser.verify_published_project_dict_against_project_dict(
                 project_dict, published_project_dict
             ):
                 self.__published_project_id = published_project_id
                 self.__published_project_name = published_project_dict.get("name")
             else:
-                raise atscale_errors.UserError(
+                raise ValueError(
                     "The provided published project id is not associated with the provided project."
                 )
 
@@ -106,9 +102,6 @@ class Project:
 
         Args:
             value (Any): Setter cannot be used.
-
-        Raises:
-            Exception: The user cannot reset the value of the project ID
         """
         raise atscale_errors.UnsupportedOperationException(
             "Value of draft_project_id is final; it cannot be altered."
@@ -132,9 +125,6 @@ class Project:
 
         Args:
             value (Any): Setter cannot be used
-
-        Raises:
-            Exception: The user cannot reset the value of the project name
         """
         raise atscale_errors.UnsupportedOperationException(
             "Value of project_name is final; it cannot be altered."
@@ -158,9 +148,6 @@ class Project:
 
         Args:
             value (Any): Setter cannot be used
-
-        Raises:
-            Exception: The user cannot reset the value of the published project ID
         """
         raise atscale_errors.UnsupportedOperationException(
             "Value of published_project_id is final; it cannot be altered."
@@ -184,9 +171,6 @@ class Project:
 
         Args:
             value (Any): Setter cannot be used
-
-        Raises:
-            Exception: The user cannot reset the value of the published project name
         """
         raise atscale_errors.UnsupportedOperationException(
             "Value of published_project_name is final; it cannot be altered."
@@ -195,23 +179,24 @@ class Project:
     def _get_dict(self):
         return self._atconn._get_draft_project_dict(self.__project_id)
 
-    def get_published_projects(self, include_soft_publish: bool = False) -> List[dict]:
+    def get_published_projects(self, include_soft_publish: bool = False) -> List[Dict]:
         """Get all published projects associated with this project. There can be multiple publications per id.
 
         Args:
             include_soft_publish (bool, optional): Whether to include soft publishes when looking for publishes. Defaults to False.
 
         Returns:
-            List[dict]: A list of dictionaries containing metadata about the various published projects
+            List[Dict]: A list of dictionaries containing metadata about the various published projects
         """
         inspection = getfullargspec(self.get_published_projects)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self._get_dict()
         published_project_list = self._atconn._get_published_projects()
-        return project_parser.parse_published_projects_for_project(
+        ret_list = project_parser.parse_published_projects_for_project(
             project_dict, published_project_list, include_soft_publish
         )
+        return sorted(ret_list, key=lambda d: d["name"].upper())
 
     def select_published_project(self, include_soft_publish: bool = False):
         """Prompts the user for input and sets the published project on this Project instance to the selected project.
@@ -220,11 +205,11 @@ class Project:
             include_soft_publish (bool, optional): Whether to include soft publishes when looking for publishes. Defaults to False.
         """
         inspection = getfullargspec(self.select_published_project)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         published_project_list = self.get_published_projects(include_soft_publish)
         if not published_project_list:
-            raise atscale_errors.UserError("There is no published version of this project")
+            raise atscale_errors.WorkFlowError("There is no published version of this project")
         published_project_dict = input_utils.choose_id_and_name_from_dict_list(
             published_project_list, "Please choose a published project:"
         )
@@ -253,7 +238,7 @@ class Project:
         from atscale.data_model import DataModel
 
         inspection = getfullargspec(self.get_data_model)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         data_model_dict_list = project_parser.get_data_models(self._get_dict())
         data_model_dict = None
@@ -262,9 +247,7 @@ class Project:
             data_model_dict = data_model_dict_list[0]
         # otherwise, let's look for the name
         elif model_name is None and len(data_model_dict_list) > 1:
-            raise atscale_errors.UserError(
-                "There is more than one data_model. Please provide a model_name."
-            )
+            raise ValueError("There is more than one data_model. Please provide a model_name.")
         else:
             for dmd in data_model_dict_list:
                 if dmd.get("name") == model_name:
@@ -296,7 +279,7 @@ class Project:
         from atscale.data_model.data_model import DataModel
 
         inspection = getfullargspec(self.select_data_model)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if data_model_id is None:
             data_model_dict_list = project_parser.get_data_models(self._get_dict())
@@ -313,7 +296,7 @@ class Project:
             data_model_id = data_model_dict.get("id")
             if data_model_id is None:
                 msg = "data_model id was None in Project.select_data_model after getting a non None data_model_dict"
-                raise Exception(msg)
+                raise atscale_errors.ModelingError(msg)
         data_model = DataModel(data_model_id, self)
         return data_model
 
@@ -329,14 +312,11 @@ class Project:
             will use the default if None. Defaults to None. Do not use a query_name that already exists.
             version_tag (str, optional): A string to tag the published version with. Defaults to None.
 
-        Raises:
-            Exception: If unable to retrieve the published project after publishing
-
         Returns:
             str: The id of the published project
         """
         inspection = getfullargspec(self.publish)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         data = {}
         if version_tag is not None:
@@ -352,11 +332,11 @@ class Project:
             data["modifications"] = {"queryName": new_query_name}
 
         # publishes the project
-        u = endpoints._endpoint_design_org(
-            self._atconn, f"/project/{self.draft_project_id}/publish"
+        u = endpoints._endpoint_design_publish_project(
+            self._atconn, draft_project_id=self.draft_project_id
         )
         d = json.dumps(data)
-        response = self._atconn._submit_request(request_type=RequestType.POST, url=u, data=d)
+        response = self._atconn._submit_request(request_type=enums.RequestType.POST, url=u, data=d)
 
         # update the published_project_id and publsihed_project_name
         # first check if the caller passed in a new name for the published_project
@@ -380,7 +360,9 @@ class Project:
             self.__published_project_id = published_project.get("id")
             self.__published_project_name = published_project.get("name")
         else:  # otherwise something went wrong
-            raise Exception("Unable to retrieve published project right after publishing.")
+            raise atscale_errors.AtScaleServerError(
+                "Unable to retrieve published project right after publishing."
+            )
         return self.__published_project_id
 
     def unpublish(self) -> bool:
@@ -406,22 +388,23 @@ class Project:
 
     def _update_project(
         self,
-        project_json: dict,
+        project_dict: Dict,
         publish=True,
     ):
         """Updates the project.
 
-        :param json project_json: The local version of the project JSON being pushed to the server.
+        :param json project_dict: The local version of the project JSON being pushed to the server.
         :param bool publish: Whether or not the updated project should be published. Defaults to True.
         """
         snap = self.create_snapshot(f"Python snapshot {datetime.now()}")
         # gets/overwrites the project json.
-        url = endpoints._endpoint_design_org(
-            self._atconn, suffix=f"/project/{self.draft_project_id}"
+        url = endpoints._endpoint_design_draft_project(
+            self._atconn,
+            draft_project_id=self.draft_project_id,
         )
         try:
             self._atconn._submit_request(
-                request_type=RequestType.PUT, url=url, data=json.dumps(project_json)
+                request_type=enums.RequestType.PUT, url=url, data=json.dumps(project_dict)
             )
             if publish is True:
                 self.publish()
@@ -447,28 +430,29 @@ class Project:
             published_project_id = published_project.get("id")
             self._atconn._unpublish_project(published_project_id=published_project_id)
         # deletes the project
-        u = endpoints._endpoint_design_org(self._atconn, "/project/" + self.draft_project_id)
-        response = self._atconn._submit_request(request_type=RequestType.DELETE, url=u)
+        u = endpoints._endpoint_design_draft_project(
+            self._atconn,
+            draft_project_id=self.draft_project_id,
+        )
+        response = self._atconn._submit_request(request_type=enums.RequestType.DELETE, url=u)
 
     def _update_project_tables(
-        self, tables=None, publish=True, project_dict: dict = None, update_project: bool = True
+        self, tables=None, publish=True, project_dict: Dict = None, update_project: bool = True
     ):
-        """Updates the project's tables after verifying they have edits. updates the source references for the atscale dataset
+        """Updates the project's tables after verifying they have edits. updates the source references for the AtScale dataset
         :param list of str tables: The tables to update info for. Defaults to None for all tables in the project
         :param bool publish: Whether the updated project should be published. Defaults to True.
         :param dict project_dict: the project_dict to work with. If not passed it will pull a project_dict
         :param bool update_project: if this function should update the draft project. Defaults to True
         """
-        logger.debug("ATSCALE.py: updating project tables")
-
         if not project_dict:
             project_dict = self._get_dict()
-        datasets: List[dsp.Dataset] = [
-            dsp.Dataset(dset)
-            for dset in project_dict["datasets"]["data-set"]
-            if not dsp.Dataset(dset).is_qds()
+        datasets: List[dataset_parser.Dataset] = [
+            dataset_parser.Dataset(dset)
+            for dset in project_dict.get("datasets", {}).get("data-set", [])
+            if not dataset_parser.Dataset(dset).is_qds()
         ]
-        table_to_dset: Dict[str, dsp.Dataset] = {ds.table["name"]: ds for ds in datasets}
+        table_to_dset: Dict[str, dataset_parser.Dataset] = {ds.table["name"]: ds for ds in datasets}
         if isinstance(tables, str):
             tables = [tables]
         if tables is None:
@@ -476,7 +460,7 @@ class Project:
         else:
             missing_tables = [t for t in tables if t not in table_to_dset]
             if len(missing_tables) == len(tables):
-                return  # nothing to update cuz no requested tables exist or maybe they r all qds
+                return  # nothing to update, either no requested tables exist or maybe they're all qds
         requires_update = False
         cache_refreshed = False
         for table_name in tables:
@@ -487,30 +471,25 @@ class Project:
                 continue
             if not cache_refreshed:
                 # refreshes the table cache
-                url = endpoints._endpoint_warehouse(
+                url = endpoints._endpoint_warehouse_tables_cacheRefresh(
                     atconn=self._atconn,
-                    suffix=f"/conn/{dataset.connection_id}/tables/cacheRefresh",
+                    warehouse_id=dataset.connection_id,
                 )
-                self._atconn._submit_request(request_type=RequestType.POST, url=url)
+                self._atconn._submit_request(request_type=enums.RequestType.POST, url=url)
                 cache_refreshed = True
             table = dataset.table
-            info = ""
-            if "database" in table:
-                info = "?database=" + table["database"]
-            if "schema" in table:
-                if info == "":
-                    info = "?schema=" + table["schema"]
-                else:
-                    info = f'{info}&schema={table["schema"]}'
-            # gets metadata information on the table
-            url = endpoints._endpoint_warehouse(
-                self._atconn, f'/conn/{dataset.connection_id}/table/{table["name"]}/info{info}'
+            url = endpoints._endpoint_warehouse_single_table_info(
+                self._atconn,
+                warehouse_id=dataset.connection_id,
+                table=table["name"],
+                schema=table.get("schema", None),
+                database=table.get("database", None),
             )
-            response = self._atconn._submit_request(request_type=RequestType.GET, url=url)
+            response = self._atconn._submit_request(request_type=enums.RequestType.GET, url=url)
             server_columns = [
                 (x["name"], x["column-type"]["data-type"])
                 for x in json.loads(response.content)["response"]["columns"]
-            ]  # excludes atscale sql columns
+            ]  # excludes AtScale sql columns
             project_columns = [(c.name, c.dtype) for c in dataset.columns if not c.is_calculated()]
             project_calc_columns = [c.column for c in dataset.columns if c.is_calculated()]
             if set(server_columns) != set(project_columns):
@@ -521,7 +500,7 @@ class Project:
                 dataset.columns = columns
                 requires_update = True
         if requires_update and update_project:
-            self._update_project(project_json=project_dict, publish=publish)
+            self._update_project(project_dict=project_dict, publish=publish)
 
     def create_snapshot(
         self,
@@ -536,19 +515,17 @@ class Project:
             str: The snapshot ID.
         """
         inspection = getfullargspec(self.create_snapshot)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(
-            err_msg="Establishing a connection in the atconn field is required"
-        )
+        self._atconn._check_connected()
 
         # creates with snapshot of the given name
-        url = endpoints._endpoint_design_org(
-            self._atconn, f"/project/{self.draft_project_id}/snapshots"
+        url = endpoints._endpoint_design_all_snapshots(
+            self._atconn, draft_project_id=self.draft_project_id
         )
         tag = {"tag": snapshot_name}
         response = self._atconn._submit_request(
-            request_type=RequestType.POST, url=url, data=json.dumps(tag)
+            request_type=enums.RequestType.POST, url=url, data=json.dumps(tag)
         )
         return json.loads(response.content)["response"]["snapshot_id"]
 
@@ -560,16 +537,18 @@ class Project:
             new_snapshot_name (str): The new name for the snapshot.
         """
         inspection = getfullargspec(self.update_snapshot)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(err_msg="Establishing a connection in the client is required")
+        self._atconn._check_connected()
 
         # interacts with the snapshot of the given id
-        url = endpoints._endpoint_design_org(
-            self._atconn, suffix=f"/project/{self.draft_project_id}/snapshots/{snapshot_id}"
+        url = endpoints._endpoint_design_specific_snapshot(
+            self._atconn, draft_project_id=self.draft_project_id, snapshot_id=snapshot_id
         )
         data = {"name": new_snapshot_name}
-        self._atconn._submit_request(request_type=RequestType.PATCH, url=url, data=json.dumps(data))
+        self._atconn._submit_request(
+            request_type=enums.RequestType.PATCH, url=url, data=json.dumps(data)
+        )
 
     def delete_snapshot(
         self,
@@ -581,17 +560,15 @@ class Project:
             snapshot_id (str): The ID of the snapshot to be deleted.
         """
         inspection = getfullargspec(self.delete_snapshot)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(
-            err_msg="Establishing a connection in the associated Client is required"
-        )
+        self._atconn._check_connected()
 
         # interacts with the snapshot of the given id
-        url = endpoints._endpoint_design_org(
-            self._atconn, suffix=f"/project/{self.draft_project_id}/snapshots/{snapshot_id}"
+        url = endpoints._endpoint_design_specific_snapshot(
+            self._atconn, draft_project_id=self.draft_project_id, snapshot_id=snapshot_id
         )
-        self._atconn._submit_request(request_type=RequestType.DELETE, url=url)
+        self._atconn._submit_request(request_type=enums.RequestType.DELETE, url=url)
 
     def restore_snapshot(
         self,
@@ -603,23 +580,23 @@ class Project:
             snapshot_id (str): The ID of the snapshot to be restored from.
         """
         inspection = getfullargspec(self.restore_snapshot)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(
-            err_msg="Establishing a connection in the atconn field is required"
-        )
+        self._atconn._check_connected()
 
         # interacts with the snapshot of the given id
-        url = endpoints._endpoint_design_org(
-            self._atconn, f"/project/{self.draft_project_id}/snapshots/{snapshot_id}/restore"
+        url = endpoints._endpoint_design_restore_snapshot(
+            self._atconn,
+            draft_project_id=self.draft_project_id,
+            snapshot_id=snapshot_id,
         )
         # in API documentation, says to use put, but doesn't work
-        self._atconn._submit_request(request_type=RequestType.GET, url=url)
+        self._atconn._submit_request(request_type=enums.RequestType.GET, url=url)
 
     def get_snapshots(
         self,
         snapshot_name: str = None,
-    ) -> List[dict]:
+    ) -> List[Dict]:
         """Returns a dictionary of the IDs of snapshots to the snapshot names. If snapshot_name is given the dictionary will be filtered
         to just snapshots with the given name.
 
@@ -627,21 +604,21 @@ class Project:
             snapshot_name (str, optional): The name of the snapshot for which the ID is requested.
 
         Returns:
-            List[dict]: a list of dictionaries with snapshot metadata
+            List[Dict]: a list of dictionaries with snapshot metadata
         """
         inspection = getfullargspec(self.get_snapshots)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        self._atconn._check_connected(
-            err_msg="Establishing a connection in the atconn field is required"
-        )
+        self._atconn._check_connected()
 
         # returns the snapshot ids of this project
-        url = endpoints._endpoint_design_org(
-            self._atconn, f"/project/{self.draft_project_id}/snapshots"
+        url = endpoints._endpoint_design_all_snapshots(
+            self._atconn, draft_project_id=self.draft_project_id
         )
 
-        request_resp = self._atconn._submit_request(request_type=RequestType.GET, url=url).text
+        request_resp = self._atconn._submit_request(
+            request_type=enums.RequestType.GET, url=url
+        ).text
         response = json.loads(request_resp)["response"]
         if not response:
             return []
@@ -657,7 +634,7 @@ class Project:
             logger.warning(
                 f"Multiple snapshots with the name {snapshot_name} found, consider renaming one to reduce ambiguity."
             )
-        return snapshot_list
+        return sorted(snapshot_list, key=lambda d: d["name"].upper())
 
     def delete_dataset(
         self,
@@ -676,17 +653,14 @@ class Project:
             delete_children (bool): Defaults to None to prompt for every calculated_measure dependent on measures
                 from the dataset. Setting this parameter to True or False simulates inputting 'y' or 'n',
                 respectively, for all prompts.
-
-        Raises:
-            atscale_errors.UserError: if there is no dataset with the given name
         """
-        logger.warn(
-            "Deleting datasets  involved with degnerate dimensions can have unexpected behaviors. If such an error occurs, please resolve your deletion in the Design Canvas"
+        logger.warning(
+            "Deleting datasets involved with degnerate dimensions can have unexpected behaviors. If such an error occurs, please resolve your deletion in the Design Canvas"
         )
         from atscale.parsers import data_model_parser
 
         inspection = getfullargspec(self.delete_dataset)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         # Delete library (project level) datasets
         temp_json = deepcopy(self._get_dict())
@@ -699,7 +673,9 @@ class Project:
             else:
                 ds_id = dataset["id"]
         if not ds_id:
-            raise atscale_errors.UserError(f"No dataset with name {dataset_name} found in project")
+            raise atscale_errors.ObjectNotFoundError(
+                f"No dataset with name {dataset_name} found in project"
+            )
         temp_json["datasets"]["data-set"] = new_dataset_list
 
         # Delete dataset from data model and find measures to delete
@@ -724,7 +700,7 @@ class Project:
                         f"Dependent features: {features_to_delete}. "
                     )
                 elif delete_children is not True and delete_children is not False:
-                    raise atscale_errors.UserError(
+                    raise ValueError(
                         "the delete_children parameter must be None, False, or True and nothing else"
                     )
                 if delete_children:
@@ -741,17 +717,7 @@ class Project:
                     raise atscale_errors.DependentMeasureException(
                         f"The following measures were protected, so the deletion was aborted: {features_to_delete}"
                     )
-        self._update_project(project_json=temp_json, publish=publish)
-
-    def _assert_published_project_id_not_none(
-        self,
-        method: str = None,
-    ):
-        method_name = "is" if method is None else f"e {method}"
-        if self.__published_project_id is None:
-            raise atscale_errors.UserError(
-                f"The project needs to be published before calling th{method_name} method"
-            )
+        self._update_project(project_dict=temp_json, publish=publish)
 
     def get_data_models(self) -> List[Dict[str, str]]:
         """Prints all Data Models that are visible for the associated Project. Returns a list of dicts
@@ -762,6 +728,7 @@ class Project:
         """
 
         data_model_dict_list = project_parser.get_data_models(self._get_dict())
+        data_model_dict_list = sorted(data_model_dict_list, key=lambda d: d["name"].upper())
 
         print("Note: Data Model ID is expected in Data Model constructor.")
         for i, dct in enumerate(data_model_dict_list):
@@ -769,7 +736,7 @@ class Project:
 
         return data_model_dict_list
 
-    def get_connected_warehouse(self):
+    def get_connected_warehouse(self) -> str:
         """Returns the warehouse id utilized in this project
 
         Returns:
@@ -787,9 +754,9 @@ class Project:
         """Creates a new empty DataModel in the current project and sets the name to the given query_name.
 
         Args:
-            query_name (str): The query name for the newly cloned model.
+            query_name (str): The query name for the newly created model.
             caption (str, optional): The caption of the model. Defaults to "" to leave the same as the query_name.
-            description (str, optional): The description of the model. Defaults to "".
+            description (str, optional): The description of the model. Defaults to "" to leave blank.
             publish (bool, optional): Whether to publish the project after creating the new model. Defaults to True.
 
         Returns:
@@ -798,17 +765,16 @@ class Project:
         from atscale.data_model import DataModel
 
         inspection = getfullargspec(self.create_data_model)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self._get_dict()
         cubes = project_parser.get_cubes(project_dict)
         for cube in cubes:
             if cube.get("name") == query_name:
-                raise atscale_errors.UserError(
+                raise atscale_errors.CollisionError(
                     f"There is already a data model in the project with the query name: {query_name}"
                 )
-        new_cube = create_cube_dict(query_name, caption, description)
-        cubes.append(new_cube)
-        project_dict["cubes"]["cube"] = cubes
+        new_cube = templates.create_cube_dict(query_name, caption, description)
+        project_dict["cubes"].setdefault("cube", []).append(new_cube)
         self._update_project(project_dict, publish)
         return DataModel(new_cube["id"], self)

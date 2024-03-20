@@ -28,15 +28,15 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Util.py3compat import bord
+from Crypto.Util.py3compat import bord
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, SmartPointer,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t,
                                   c_uint8_ptr, c_ubyte)
 
-_raw_keccak_lib = load_pycryptodome_raw_lib("Cryptodome.Hash._keccak",
+_raw_keccak_lib = load_pycryptodome_raw_lib("Crypto.Hash._keccak",
                         """
                         int keccak_init(void **state,
                                         size_t capacity_bytes,

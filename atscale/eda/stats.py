@@ -1,11 +1,12 @@
-from atscale.db.sql_connection import SQLConnection
-from atscale.data_model.data_model import DataModel
-from atscale.utils.eda_utils import _stats_checks
-from atscale.base.enums import PandasTableExistsActionType
 from typing import List
 import logging
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
+from atscale.db.sql_connection import SQLConnection
+from atscale.data_model.data_model import DataModel
+from atscale.project import project_helpers
+from atscale.utils import validation_utils, eda_utils
+from atscale.base import enums
 
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ def variance(
     feature: str,
     granularity_levels: List[str],
     sample: bool = True,
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> float:
@@ -31,8 +32,8 @@ def variance(
                                         granularity desired in the given feature.
         sample (bool, optional): Whether to calculate the sample variance. Defaults to True; otherwise,
                                  calculates the population variance.
-        if_exists (PandasTableExistsActionType, optional): The default action that taken when creating
-                                                           a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action that taken when creating
+                                                           a table with a preexisting name. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that this functionality will write tables to. Defaults to the database associated with the
                               given dbconn.
         write_schema (str): The schema that this functionality will write tables to. Defaults to the database associated with the
@@ -42,10 +43,17 @@ def variance(
         float: The feature's variance.
     """
     inspection = getfullargspec(variance)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
+
+    project_helpers._check_published(data_model.project)
 
     # Error checks
-    _stats_checks(
+    eda_utils._stats_checks(
         dbconn=dbconn,
         data_model=data_model,
         feature_list=[feature],
@@ -76,7 +84,7 @@ def covariance(
     feature2: str,
     granularity_levels: List[str],
     sample: bool = True,
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> float:
@@ -91,8 +99,8 @@ def covariance(
                                   granularity desired in the given features.
         sample (bool, optional): Whether to calculate the sample covariance. Defaults to True; otherwise,
                                  calculates the population covariance.
-        if_exists (PandasTableExistsActionType, optional): The default action that taken when creating
-                                                           a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action that taken when creating
+                                                           a table with a preexisting name. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that this functionality will write tables to. Defaults to the database associated with the
                               given dbconn.
         write_schema (str): The schema that this functionality will write tables to. Defaults to the database associated with the
@@ -102,10 +110,17 @@ def covariance(
         float: The features' covariance.
     """
     inspection = getfullargspec(covariance)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
+
+    project_helpers._check_published(data_model.project)
 
     # Error checks
-    _stats_checks(
+    eda_utils._stats_checks(
         dbconn=dbconn,
         data_model=data_model,
         feature_list=[feature1, feature2],
@@ -136,7 +151,7 @@ def std(
     feature: str,
     granularity_levels: List[str],
     sample: bool = True,
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> float:
@@ -150,8 +165,8 @@ def std(
                                   granularity desired in the given feature.
         sample (bool, optional): Whether to calculate the sample standard deviation. Defaults to True;
                                  otherwise, calculates the population standard deviation.
-        if_exists (PandasTableExistsActionType, optional): The default action that taken when creating
-                                                           a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action that taken when creating
+                                                           a table with a preexisting name. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that this functionality will write tables to. Defaults to the database associated with the
                               given dbconn.
         write_schema (str): The schema that this functionality will write tables to. Defaults to the database associated with the
@@ -161,10 +176,17 @@ def std(
         float: The feature's standard deviation.
     """
     inspection = getfullargspec(std)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
+
+    project_helpers._check_published(data_model.project)
 
     # Error checks
-    _stats_checks(
+    eda_utils._stats_checks(
         dbconn=dbconn,
         data_model=data_model,
         feature_list=[feature],
@@ -194,7 +216,7 @@ def corrcoef(
     feature1: str,
     feature2: str,
     granularity_levels: List[str],
-    if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+    if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     write_database: str = None,
     write_schema: str = None,
 ) -> float:
@@ -207,8 +229,8 @@ def corrcoef(
         fearure2 (str): The second feature.
         granularity_levels (List[str]): The categorical features corresponding to the level of
                                         granularity desired in the given features.
-        if_exists (PandasTableExistsActionType, optional): The default action that taken when creating
-                                                           a table with a preexisting name. Does not accept APPEND. Defaults to FAIL.
+        if_exists (enums.TableExistsAction, optional): The default action that taken when creating
+                                                           a table with a preexisting name. Does not accept APPEND. Defaults to ERROR.
         write_database (str): The database that this functionality will write tables to. Defaults to the database associated with the
                               given dbconn.
         write_schema (str): The schema that this functionality will write tables to. Defaults to the database associated with the
@@ -218,10 +240,17 @@ def corrcoef(
         float: The features' correlation.
     """
     inspection = getfullargspec(corrcoef)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+    if if_exists == enums.TableExistsAction.IGNORE:
+        raise ValueError(
+            "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+        )
+
+    project_helpers._check_published(data_model.project)
 
     # Error checks
-    _stats_checks(
+    eda_utils._stats_checks(
         dbconn=dbconn,
         data_model=data_model,
         feature_list=[feature1, feature2],

@@ -35,28 +35,28 @@ import struct
 import binascii
 from collections import namedtuple
 
-from Cryptodome.Util.py3compat import bord, tobytes, tostr, bchr, is_string
-from Cryptodome.Util.number import bytes_to_long, long_to_bytes
+from Crypto.Util.py3compat import bord, tobytes, tostr, bchr, is_string
+from Crypto.Util.number import bytes_to_long, long_to_bytes
 
-from Cryptodome.Math.Numbers import Integer
-from Cryptodome.Util.asn1 import (DerObjectId, DerOctetString, DerSequence,
+from Crypto.Math.Numbers import Integer
+from Crypto.Util.asn1 import (DerObjectId, DerOctetString, DerSequence,
                               DerBitString)
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib, VoidPointer,
                                   SmartPointer, c_size_t, c_uint8_ptr,
                                   c_ulonglong, null_pointer)
 
-from Cryptodome.PublicKey import (_expand_subject_public_key_info,
+from Crypto.PublicKey import (_expand_subject_public_key_info,
                               _create_subject_public_key_info,
                               _extract_subject_public_key_info)
 
-from Cryptodome.Hash import SHA512, SHAKE256
+from Crypto.Hash import SHA512, SHAKE256
 
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Random.random import getrandbits
+from Crypto.Random import get_random_bytes
+from Crypto.Random.random import getrandbits
 
 
-_ec_lib = load_pycryptodome_raw_lib("Cryptodome.PublicKey._ec_ws", """
+_ec_lib = load_pycryptodome_raw_lib("Crypto.PublicKey._ec_ws", """
 typedef void EcContext;
 typedef void EcPoint;
 int ec_ws_new_context(EcContext **pec_ctx,
@@ -87,7 +87,7 @@ int ec_ws_cmp(const EcPoint *ecp1, const EcPoint *ecp2);
 int ec_ws_neg(EcPoint *p);
 """)
 
-_ed25519_lib = load_pycryptodome_raw_lib("Cryptodome.PublicKey._ed25519", """
+_ed25519_lib = load_pycryptodome_raw_lib("Crypto.PublicKey._ed25519", """
 typedef void Point;
 int ed25519_new_point(Point **out,
                       const uint8_t x[32],
@@ -104,7 +104,7 @@ int ed25519_add(Point *P1, const Point *P2);
 int ed25519_scalar(Point *P, const uint8_t *scalar, size_t scalar_len, uint64_t seed);
 """)
 
-_ed448_lib = load_pycryptodome_raw_lib("Cryptodome.PublicKey._ed448", """
+_ed448_lib = load_pycryptodome_raw_lib("Crypto.PublicKey._ed448", """
 typedef void EcContext;
 typedef void PointEd448;
 int ed448_new_context(EcContext **pec_ctx);
@@ -960,10 +960,10 @@ class EccKey(object):
         return DerSequence(seq).encode()
 
     def _export_pkcs8(self, **kwargs):
-        from Cryptodome.IO import PKCS8
+        from Crypto.IO import PKCS8
 
         if kwargs.get('passphrase', None) is not None and 'protection' not in kwargs:
-            raise ValueError("At least the 'protection' parameter should be present")
+            raise ValueError("At least the 'protection' parameter must be present")
 
         if self._is_eddsa():
             oid = self._curve.oid
@@ -981,25 +981,25 @@ class EccKey(object):
         return result
 
     def _export_public_pem(self, compress):
-        from Cryptodome.IO import PEM
+        from Crypto.IO import PEM
 
         encoded_der = self._export_subjectPublicKeyInfo(compress)
         return PEM.encode(encoded_der, "PUBLIC KEY")
 
     def _export_private_pem(self, passphrase, **kwargs):
-        from Cryptodome.IO import PEM
+        from Crypto.IO import PEM
 
         encoded_der = self._export_rfc5915_private_der()
         return PEM.encode(encoded_der, "EC PRIVATE KEY", passphrase, **kwargs)
 
     def _export_private_clear_pkcs8_in_clear_pem(self):
-        from Cryptodome.IO import PEM
+        from Crypto.IO import PEM
 
         encoded_der = self._export_pkcs8()
         return PEM.encode(encoded_der, "PRIVATE KEY")
 
     def _export_private_encrypted_pkcs8_in_clear_pem(self, passphrase, **kwargs):
-        from Cryptodome.IO import PEM
+        from Crypto.IO import PEM
 
         assert passphrase
         if 'protection' not in kwargs:
@@ -1041,7 +1041,7 @@ class EccKey(object):
 
         Args:
           format (string):
-            The format to use for encoding the key:
+            The output format:
 
             - ``'DER'``. The key will be encoded in ASN.1 DER format (binary).
               For a public key, the ASN.1 ``subjectPublicKeyInfo`` structure
@@ -1062,20 +1062,25 @@ class EccKey(object):
               * For NIST P-curves: equivalent to ``'SEC1'``.
               * For EdDSA curves: ``bytes`` in the format defined in `RFC8032`_.
 
-          passphrase (byte string or string):
-            The passphrase to use for protecting the private key.
+          passphrase (bytes or string):
+            (*Private keys only*) The passphrase to protect the
+            private key.
 
           use_pkcs8 (boolean):
-            Only relevant for private keys.
-
+            (*Private keys only*)
             If ``True`` (default and recommended), the `PKCS#8`_ representation
             will be used. It must be ``True`` for EdDSA curves.
+
+            If ``False`` and a passphrase is present, the obsolete PEM
+            encryption will be used.
 
           protection (string):
             When a private key is exported with password-protection
             and PKCS#8 (both ``DER`` and ``PEM`` formats), this parameter MUST be
-            present and be a valid algorithm supported by :mod:`Cryptodome.IO.PKCS8`.
-            It is recommended to use ``PBKDF2WithHMAC-SHA1AndAES128-CBC``.
+            present,
+            For all possible protection schemes,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            It is recommended to use ``'PBKDF2WithHMAC-SHA5126AndAES128-CBC'``.
 
           compress (boolean):
             If ``True``, the method returns a more compact representation
@@ -1086,6 +1091,16 @@ class EccKey(object):
             This parameter is ignored for EdDSA curves, as compression is
             mandatory.
 
+          prot_params (dict):
+            When a private key is exported with password-protection
+            and PKCS#8 (both ``DER`` and ``PEM`` formats), this dictionary
+            contains the  parameters to use to derive the encryption key
+            from the passphrase.
+            For all possible values,
+            refer to :ref:`the encryption parameters of PKCS#8<enc_params>`.
+            The recommendation is to use ``{'iteration_count':21000}`` for PBKDF2,
+            and ``{'iteration_count':131072}`` for scrypt.
+
         .. warning::
             If you don't provide a passphrase, the private key will be
             exported in the clear!
@@ -1093,7 +1108,7 @@ class EccKey(object):
         .. note::
             When exporting a private key with password-protection and `PKCS#8`_
             (both ``DER`` and ``PEM`` formats), any extra parameters
-            to ``export_key()`` will be passed to :mod:`Cryptodome.IO.PKCS8`.
+            to ``export_key()`` will be passed to :mod:`Crypto.IO.PKCS8`.
 
         .. _PEM:        http://www.ietf.org/rfc/rfc1421.txt
         .. _`PEM encryption`: http://www.ietf.org/rfc/rfc1423.txt
@@ -1121,8 +1136,11 @@ class EccKey(object):
                     raise ValueError("Empty passphrase")
             use_pkcs8 = args.pop("use_pkcs8", True)
 
-            if not use_pkcs8 and self._is_eddsa():
-                raise ValueError("'pkcs8' must be True for EdDSA curves")
+            if not use_pkcs8:
+                if self._is_eddsa():
+                    raise ValueError("'pkcs8' must be True for EdDSA curves")
+                if 'protection' in args:
+                    raise ValueError("'protection' is only supported for PKCS#8")
 
             if ext_format == "PEM":
                 if use_pkcs8:
@@ -1171,7 +1189,7 @@ def generate(**kwargs):
 
       randfunc (callable):
         Optional. The RNG to read randomness from.
-        If ``None``, :func:`Cryptodome.Random.get_random_bytes` is used.
+        If ``None``, :func:`Crypto.Random.get_random_bytes` is used.
     """
 
     curve_name = kwargs.pop("curve")
@@ -1408,7 +1426,7 @@ def _import_rfc5915_der(encoded, passphrase, curve_oid=None):
 
 
 def _import_pkcs8(encoded, passphrase):
-    from Cryptodome.IO import PKCS8
+    from Crypto.IO import PKCS8
 
     algo_oid, private_key, params = PKCS8.unwrap(encoded, passphrase)
 
@@ -1706,8 +1724,8 @@ def import_key(encoded, passphrase=None, curve_name=None):
 
         To import EdDSA private and public keys, when encoded as raw ``bytes``, use:
 
-        * :func:`Cryptodome.Signature.eddsa.import_public_key`, or
-        * :func:`Cryptodome.Signature.eddsa.import_private_key`.
+        * :func:`Crypto.Signature.eddsa.import_public_key`, or
+        * :func:`Crypto.Signature.eddsa.import_private_key`.
 
     Returns:
       :class:`EccKey` : a new ECC key object
@@ -1727,7 +1745,7 @@ def import_key(encoded, passphrase=None, curve_name=None):
     .. _SEC1: https://www.secg.org/sec1-v2.pdf
     """
 
-    from Cryptodome.IO import PEM
+    from Crypto.IO import PEM
 
     encoded = tobytes(encoded)
     if passphrase is not None:
@@ -1772,7 +1790,7 @@ def import_key(encoded, passphrase=None, curve_name=None):
         return _import_der(encoded, passphrase)
 
     # SEC1
-    if len(encoded) > 0 and bord(encoded[0]) in b'\x02\x03\x04':
+    if len(encoded) > 0 and bord(encoded[0]) in (0x02, 0x03, 0x04):
         if curve_name is None:
             raise ValueError("No curve name was provided")
         return _import_public_der(encoded, curve_name=curve_name)

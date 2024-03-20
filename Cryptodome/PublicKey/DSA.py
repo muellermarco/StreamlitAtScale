@@ -28,22 +28,22 @@ import binascii
 import struct
 import itertools
 
-from Cryptodome.Util.py3compat import bchr, bord, tobytes, tostr, iter_range
+from Crypto.Util.py3compat import bchr, bord, tobytes, tostr, iter_range
 
-from Cryptodome import Random
-from Cryptodome.IO import PKCS8, PEM
-from Cryptodome.Hash import SHA256
-from Cryptodome.Util.asn1 import (
+from Crypto import Random
+from Crypto.IO import PKCS8, PEM
+from Crypto.Hash import SHA256
+from Crypto.Util.asn1 import (
                 DerObject, DerSequence,
                 DerInteger, DerObjectId,
                 DerBitString,
                 )
 
-from Cryptodome.Math.Numbers import Integer
-from Cryptodome.Math.Primality import (test_probable_prime, COMPOSITE,
+from Crypto.Math.Numbers import Integer
+from Crypto.Math.Primality import (test_probable_prime, COMPOSITE,
                                    PROBABLY_PRIME)
 
-from Cryptodome.PublicKey import (_expand_subject_public_key_info,
+from Crypto.PublicKey import (_expand_subject_public_key_info,
                               _create_subject_public_key_info,
                               _extract_subject_public_key_info)
 
@@ -235,7 +235,7 @@ class DsaKey(object):
             If :data:`pkcs8` takes value ``True``, this is the PKCS#8
             algorithm to use for deriving the secret and encrypting
             the private DSA key.
-            For a complete list of algorithms, see :mod:`Cryptodome.IO.PKCS8`.
+            For a complete list of algorithms, see :mod:`Crypto.IO.PKCS8`.
             The default is *PBKDF2WithHMAC-SHA1AndDES-EDE3-CBC*.
 
             If :data:`pkcs8` is ``False``, the obsolete PEM encryption scheme is
@@ -247,7 +247,7 @@ class DsaKey(object):
 
           randfunc (callable):
             A function that returns random bytes.
-            By default it is :func:`Cryptodome.Random.get_random_bytes`.
+            By default it is :func:`Crypto.Random.get_random_bytes`.
 
         Returns:
           byte string : the encoded key
@@ -336,13 +336,13 @@ class DsaKey(object):
     exportKey = export_key
     publickey = public_key
 
-    # Methods defined in PyCryptodome that we don't support anymore
+    # Methods defined in PyCrypto that we don't support anymore
 
     def sign(self, M, K):
-        raise NotImplementedError("Use module Cryptodome.Signature.DSS instead")
+        raise NotImplementedError("Use module Crypto.Signature.DSS instead")
 
     def verify(self, M, signature):
-        raise NotImplementedError("Use module Cryptodome.Signature.DSS instead")
+        raise NotImplementedError("Use module Crypto.Signature.DSS instead")
 
     def encrypt(self, plaintext, K):
         raise NotImplementedError
@@ -427,7 +427,7 @@ def generate(bits, randfunc=None, domain=None):
       randfunc (callable):
         Random number generation function; it accepts a single integer N
         and return a string of random data N bytes long.
-        If not specified, :func:`Cryptodome.Random.get_random_bytes` is used.
+        If not specified, :func:`Crypto.Random.get_random_bytes` is used.
 
       domain (tuple):
         The DSA domain parameters *p*, *q* and *g* as a list of 3

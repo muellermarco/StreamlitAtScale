@@ -8,9 +8,9 @@ from botocore.exceptions import ClientError
 
 # We're not using named loggers anywhere. I threw one here as an example.
 # This grabs names based on modules so it's more clear where log messages
-# are coming from. In this case, since tests is at the same level of atscale
+# are coming from. In this case, since tests is at the same level of AtScale
 # it's not super useful. However, this pattern can be used for submodules
-# of atscale as the code base grows.
+# of AtScale as the code base grows.
 logger = logging.getLogger(__name__)
 
 

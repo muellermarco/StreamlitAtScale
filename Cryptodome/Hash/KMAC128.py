@@ -30,8 +30,8 @@
 
 from binascii import unhexlify
 
-from Cryptodome.Util.py3compat import bord, tobytes, is_bytes
-from Cryptodome.Random import get_random_bytes
+from Crypto.Util.py3compat import bord, tobytes, is_bytes
+from Crypto.Random import get_random_bytes
 
 from . import cSHAKE128, SHA3_256
 from .cSHAKE128 import _bytepad, _encode_str, _right_encode

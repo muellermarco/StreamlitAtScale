@@ -30,11 +30,11 @@
 
 import struct
 
-from Cryptodome.Cipher import AES
-from Cryptodome.Hash import SHA512
-from Cryptodome.Protocol.KDF import _bcrypt_hash
-from Cryptodome.Util.strxor import strxor
-from Cryptodome.Util.py3compat import tostr, bchr, bord
+from Crypto.Cipher import AES
+from Crypto.Hash import SHA512
+from Crypto.Protocol.KDF import _bcrypt_hash
+from Crypto.Util.strxor import strxor
+from Crypto.Util.py3compat import tostr, bchr, bord
 
 
 def read_int4(data):

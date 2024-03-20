@@ -36,12 +36,12 @@ __all__ = ['encode', 'decode']
 import re
 from binascii import a2b_base64, b2a_base64, hexlify, unhexlify
 
-from Cryptodome.Hash import MD5
-from Cryptodome.Util.Padding import pad, unpad
-from Cryptodome.Cipher import DES, DES3, AES
-from Cryptodome.Protocol.KDF import PBKDF1
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Util.py3compat import tobytes, tostr
+from Crypto.Hash import MD5
+from Crypto.Util.Padding import pad, unpad
+from Crypto.Cipher import DES, DES3, AES
+from Crypto.Protocol.KDF import PBKDF1
+from Crypto.Random import get_random_bytes
+from Crypto.Util.py3compat import tobytes, tostr
 
 
 def encode(data, marker, passphrase=None, randfunc=None):

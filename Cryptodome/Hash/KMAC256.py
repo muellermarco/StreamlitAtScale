@@ -28,7 +28,7 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Util.py3compat import is_bytes
+from Crypto.Util.py3compat import is_bytes
 
 from .KMAC128 import KMAC_Hash
 from . import cSHAKE256

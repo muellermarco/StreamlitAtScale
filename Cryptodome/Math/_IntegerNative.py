@@ -30,7 +30,7 @@
 
 from ._IntegerBase import IntegerBase
 
-from Cryptodome.Util.number import long_to_bytes, bytes_to_long, inverse, GCD
+from Crypto.Util.number import long_to_bytes, bytes_to_long, inverse, GCD
 
 
 class IntegerNative(IntegerBase):
@@ -368,3 +368,15 @@ class IntegerNative(IntegerBase):
         n1 = n % a1
         # Step 8
         return s * IntegerNative.jacobi_symbol(n1, a1)
+
+    @staticmethod
+    def _mult_modulo_bytes(term1, term2, modulus):
+        if modulus < 0:
+            raise ValueError("Modulus must be positive")
+        if modulus == 0:
+            raise ZeroDivisionError("Modulus cannot be zero")
+        if (modulus & 1) == 0:
+            raise ValueError("Odd modulus is required")
+
+        number_len = len(long_to_bytes(modulus))
+        return long_to_bytes((term1 * term2) % modulus, number_len)

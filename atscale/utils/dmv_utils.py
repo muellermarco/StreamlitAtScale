@@ -2,49 +2,34 @@ import re
 from typing import Dict, List
 
 from atscale.connection.connection import _Connection
-from atscale.base import endpoints
-from atscale.errors import atscale_errors
-from atscale.base.enums import DMVColumnBaseClass, RequestType
+from atscale.base import endpoints, enums
+from atscale.project import project_helpers
 
 
 def get_dmv_data(
     model,
-    fields: List[DMVColumnBaseClass] = None,
-    filter_by: Dict[DMVColumnBaseClass, List[str]] = None,
-    id_field: DMVColumnBaseClass = None,
-):
+    fields: List[enums.DMVColumnBaseClass] = None,
+    filter_by: Dict[enums.DMVColumnBaseClass, List[str]] = None,
+    id_field: enums.DMVColumnBaseClass = None,
+) -> Dict:
     """Returns DMV data for a given query type, on the given project-model in the _Connection as a dict with
     items for each member of that type (ex. date_hierarchy: {}, item_hierarchy: {}).
 
     Args:
         model (DataModel): The connected DataModel to be queried against
-        fields (list of DMVColumnBaseClass fields, optional): A list of keys to query and return. id_field does not need to be
+        fields (list of enums.DMVColumnBaseClass fields, optional): A list of keys to query and return. id_field does not need to be
             included. Defaults to None.
-        filter_by (dict[DMVColumnBaseClass fields, str], optional): A dict with keys of fields and values of a list of that field's value
+        filter_by (Dict[enums.DMVColumnBaseClass fields, str], optional): A dict with keys of fields and values of a list of that field's value
             to exclusively include in the return. Defaults to None.
-        id_field (DMVColumnBaseClass, optional): The field to split items in the return dict by, the value of this field will be the key in the
+        id_field (enums.DMVColumnBaseClass, optional): The field to split items in the return dict by, the value of this field will be the key in the
             dict. Defaults to None to use the name field of the enum. Defaults to None.
-    Raises:
-        UserError: If any given key is not a enums.DMVColumnBaseClass enum or the _type parameter is not a enums enum.
-        Exception: If there is some other problem communicating with the atscale instance an exception may be raised
 
     Returns:
-        dict: A dict with each member's name as the key, with the corresponding value being a dict with key-value
-        pairs for each piece of metadata queried.
+        Dict: A dict with each member's name as the key, with the corresponding value being a dict with key-value
+            pairs for each piece of metadata queried.
     """
-    if model.project.published_project_name is None:
-        if len(model.project.get_published_projects()) > 0:
-            raise atscale_errors.UserError(
-                "The project of the provided data_model must have an associated "
-                "published project before submitting a DMV query. "
-                "Try calling project.select_published_project()"
-            )
-        else:
-            raise atscale_errors.UserError(
-                "A published project is required to query against, but there is no "
-                "published version of the project of the provided data_model. "
-                "A project can be published programmatically by calling Project.publish()"
-            )
+    project_helpers._check_published(model.project)
+
     if filter_by is None:
         filter_by = {}
     if not fields:
@@ -57,12 +42,12 @@ def get_dmv_data(
     # type checking
     schemas_in_fields = {f.__class__.__name__ for f in fields}
     if len(schemas_in_fields) > 1:
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"Conflicting DMV fields. The fields parameter contains query keys from the "
             f"following schemas: {schemas_in_fields}"
         )
     if id_field is not None and fields and id_field.__class__ != fields[0].__class__:
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"The schema '{id_field.__class__.__name__}' used for the id_field parameter "
             f"does not match the schema '{fields[0].__class__.__name__}' used in fields."
         )
@@ -71,7 +56,7 @@ def get_dmv_data(
         if key.__class__ != id_field.__class__:
             conflicting_filter_keys.add(key.__class__.__name__)
     if conflicting_filter_keys:
-        raise atscale_errors.UserError(
+        raise ValueError(
             f"The following schemas {conflicting_filter_keys} used for the filter_by "
             f"parameter do not match the schema '{id_field.__class__.__name__}' "
             f"used in fields."
@@ -107,13 +92,13 @@ def _submit_dmv_query(
     project_name: str,
     model_name: str,
     query: str,
-):
-    """Submits a DMV Query to this atscale connection and returns a list of rows expressed as xml strings.
+) -> List[str]:
+    """Submits a DMV Query to this AtScale connection and returns a list of rows expressed as xml strings.
         DMV queries hit the published project, meaning any changes that are only in the draft of the project will not
         be queryable through a DMV query
 
     Args:
-        atconn (_Connection): The atscale connection to execute queries against
+        atconn (_Connection): The AtScale connection to execute queries against
         project_name (str): The published project to execute the dmv query against
         model_name (str): The model to execute the dmv query against
         query (str): The content of the dmv query itself, a more limited version of a sql query
@@ -124,7 +109,7 @@ def _submit_dmv_query(
     query_body = _dmv_query_body(statement=query, project_name=project_name, model_name=model_name)
     url = endpoints._endpoint_dmv_query(atconn)
     response = atconn._submit_request(
-        request_type=RequestType.POST, url=url, data=query_body, content_type="xml"
+        request_type=enums.RequestType.POST, url=url, data=query_body, content_type="xml"
     )
 
     xml_text = str(response.content)
@@ -135,20 +120,20 @@ def _submit_dmv_query(
 
 
 def _generate_dmv_query_statement(
-    fields: List[DMVColumnBaseClass] = None,
-    filter_by: Dict[DMVColumnBaseClass, List[str]] = None,
-    id_field: DMVColumnBaseClass = None,
-):
+    fields: List[enums.DMVColumnBaseClass] = None,
+    filter_by: Dict[enums.DMVColumnBaseClass, List[str]] = None,
+    id_field: enums.DMVColumnBaseClass = None,
+) -> str:
     """Generates a query statement to feed into submit_dmv_query, will query the given keys in the schema of the given
      type. If filter_by_names is passed, then the query will only query for the given names, otherwise it will query
      all. For example, querying Measure type without passing some filter_by akin to {Measure.name : [<measure_name>]} will
      query all measures that exist in the model.
 
     Args:
-        fields (List[DMVColumnBaseClass], optional): The specific fields to query. Defaults to None to query all.
-        filter_by (Dict[DMVColumnBaseClass, List[str]], optional): A dict with keys of fields and values of a list of that field's value
+        fields (List[enums.DMVColumnBaseClass], optional): The specific fields to query. Defaults to None to query all.
+        filter_by (Dict[enums.DMVColumnBaseClass, List[str]], optional): A dict with keys of fields and values of a list of that field's value
                 to include in the return. Defaults to None.
-        id_field (DMVColumnBaseClass, optional): The field to split items of the query by. Defaults to None.
+        id_field (enums.DMVColumnBaseClass, optional): The field to split items of the query by. Defaults to None.
 
     Returns:
         str: a DMV query statement
@@ -183,7 +168,7 @@ def _dmv_query_body(
     statement: str,
     project_name: str,
     model_name: str,
-):
+) -> str:
     """Creates the dmv query body for the given statement, project, and model.
 
     Args:
@@ -219,21 +204,21 @@ def _dmv_query_body(
 
 def _parse_dmv_helper(
     rows: List[str],
-    fields: List[DMVColumnBaseClass],
-    id_field: DMVColumnBaseClass,
-    filter_by: Dict[DMVColumnBaseClass, List[str]] = {},
-) -> Dict[str, dict]:
+    fields: List[enums.DMVColumnBaseClass],
+    id_field: enums.DMVColumnBaseClass,
+    filter_by: Dict[enums.DMVColumnBaseClass, List[str]] = {},
+) -> Dict[str, Dict]:
     """Parses the given rows of xml text into a dict with keys determined by the values of the id_field and values being the selected members of the
-        appropriate DMVColumnBaseClass
+        appropriate enums.DMVColumnBaseClass
 
     Args:
         rows (List[str]): str rows of xml text from a DMV Query response
-        fields (List[DMVColumnBaseClass]): The fields of interest to include in the response
-        id_field (DMVColumnBaseClass): The enum members whose values will be the keys of the response dict
-        filter_by (Dict[DMVColumnBaseClass, List[str]], optional): the values of the enum members to omit from the reponse
+        fields (List[enums.DMVColumnBaseClass]): The fields of interest to include in the response
+        id_field (enums.DMVColumnBaseClass): The enum members whose values will be the keys of the response dict
+        filter_by (Dict[enums.DMVColumnBaseClass, List[str]], optional): the values of the enum members to omit from the reponse
 
     Returns:
-        Dict[str, dict]: A dictionary of the {id_field_values: {enum_members: enum_member_values_in_response}}
+        Dict[str, Dict]: A dictionary of the {id_field_values: {enum_members: enum_member_values_in_response}}
     """
     # convert filter_by values to dict to save iterating fully for every filtered out value
     filter_by = {k: {v: True for v in l} for k, l in filter_by.items()}

@@ -2,26 +2,23 @@ import json
 from typing import Dict, Callable
 import requests
 import re
-
 import pandas as pd
+
 from atscale.errors import atscale_errors
 
 
 def generate_headers(
     content_type: str = "json",
     token: str = None,
-) -> dict:
+) -> Dict:
     """generate the headers needed to query the api
 
     Args:
         content_type (str, optional): the shorthand of the content type for headers acceptable options are ['json', 'xml', 'x-www-form-urlencoded']
         token (str, optional): the Bearer token if applicable
 
-    Raises:
-        Exception: Raises exception if non-valid content is input
-
     Returns:
-        dict: the header dictionary
+        Dict: the header dictionary
     """
     response_dict = {}
 
@@ -32,7 +29,7 @@ def generate_headers(
     elif content_type == "xml":
         response_dict["Content-type"] = "application/xml"
     else:
-        raise Exception(f"Invalid content_type: `{content_type}`")
+        raise ValueError(f"Invalid content_type: `{content_type}`")
 
     if token:
         response_dict["Authorization"] = "Bearer " + token
@@ -83,13 +80,13 @@ def check_response(
         if response.status_code in error_code_dict:
             raise error_code_dict[response.status_code](message)
         else:
-            raise Exception(message)
+            raise atscale_errors.AtScaleServerError(message)
 
 
 def get_rest_request(
     url,
     data: str = "",
-    headers: dict = None,
+    headers: Dict = None,
     raises: bool = True,
     session: requests.Session = None,
 ):
@@ -100,15 +97,17 @@ def get_rest_request(
     Args:
         url (str): the url to submit a get request to
         data (str, optional): the data to include in the request. Defaults to ''.
-        headers (dict, optional): the headers to include in the request. Defaults to None.
-        raises (bool, optional): decide if we should raise the default error or the atscale error. Defaults to True.
+        headers (Dict, optional): the headers to include in the request. Defaults to None.
+        raises (bool, optional): decide if we should raise the default error or the AtScale error. Defaults to True.
 
     Returns:
         requests.Response: the query response
     """
     if session is None:
-        session = requests.Session()
-    response = session.get(url, data=data, headers=headers, stream=False)
+        response = requests.get(url, data=data, headers=headers, stream=False)
+    else:
+        response = session.get(url, data=data, headers=headers, stream=False)
+        session.close()
     if raises:
         check_response(response)
     return response
@@ -117,7 +116,7 @@ def get_rest_request(
 def patch_rest_request(
     url,
     data: str = "",
-    headers: dict = None,
+    headers: Dict = None,
     raises: bool = True,
     session: requests.Session = None,
 ):
@@ -128,15 +127,17 @@ def patch_rest_request(
     Args:
         url (str): the url to submit a patch request to
         data (str, optional): the data to include in the request. Defaults to ''.
-        headers (dict, optional): the headers to include in the request. Defaults to None.
-        raises (bool, optional): decide if we should raise the default error or the atscale error. Defaults to True.
+        headers (Dict, optional): the headers to include in the request. Defaults to None.
+        raises (bool, optional): decide if we should raise the default error or the AtScale error. Defaults to True.
 
     Returns:
         requests.Response: the query response
     """
     if session is None:
-        session = requests.Session()
-    response = session.patch(url=url, data=data, headers=headers, stream=False)
+        response = requests.patch(url, data=data, headers=headers, stream=False)
+    else:
+        response = session.patch(url, data=data, headers=headers, stream=False)
+        session.close()
     if raises:
         check_response(response)
     return response
@@ -145,7 +146,7 @@ def patch_rest_request(
 def post_rest_request(
     url,
     data: str = "",
-    headers: dict = None,
+    headers: Dict = None,
     raises: bool = True,
     session: requests.Session = None,
 ):
@@ -156,15 +157,17 @@ def post_rest_request(
     Args:
         url (str): the url to submit a post request to
         data (str, optional): the data to include in the request. Defaults to ''.
-        headers (dict, optional): the headers to include in the request. Defaults to None.
-        raises (bool, optional): decide if we should raise the default error or the atscale error. Defaults to True.
+        headers (Dict, optional): the headers to include in the request. Defaults to None.
+        raises (bool, optional): decide if we should raise the default error or the AtScale error. Defaults to True.
 
     Returns:
         requests.Response: the query response
     """
     if session is None:
-        session = requests.Session()
-    response = session.post(url=url, data=data, headers=headers, stream=False)
+        response = requests.post(url, data=data, headers=headers, stream=False)
+    else:
+        response = session.post(url, data=data, headers=headers, stream=False)
+        session.close()
     if raises:
         check_response(response)
     return response
@@ -173,7 +176,7 @@ def post_rest_request(
 def put_rest_request(
     url,
     data: str = "",
-    headers: dict = None,
+    headers: Dict = None,
     raises: bool = True,
     session: requests.Session = None,
 ):
@@ -184,15 +187,17 @@ def put_rest_request(
     Args:
         url (str): the url to submit a put request to
         data (str, optional): the data to include in the request. Defaults to ''.
-        headers (dict, optional): the headers to include in the request. Defaults to None.
-        raises (bool, optional): decide if we should raise the default error or the atscale error. Defaults to True.
+        headers (Dict, optional): the headers to include in the request. Defaults to None.
+        raises (bool, optional): decide if we should raise the default error or the AtScale error. Defaults to True.
 
     Returns:
         requests.Response: the query response
     """
     if session is None:
-        session = requests.Session()
-    response = session.put(url=url, data=data, headers=headers, stream=False)
+        response = requests.put(url, data=data, headers=headers, stream=False)
+    else:
+        response = session.put(url, data=data, headers=headers, stream=False)
+        session.close()
     if raises:
         check_response(response)
     return response
@@ -201,7 +206,7 @@ def put_rest_request(
 def delete_rest_request(
     url,
     data: str = "",
-    headers: dict = None,
+    headers: Dict = None,
     raises: bool = True,
     session: requests.Session = None,
 ):
@@ -212,15 +217,17 @@ def delete_rest_request(
     Args:
         url (str): the url to submit a delete request to
         data (str, optional): the data to include in the request. Defaults to ''.
-        headers (dict, optional): the headers to include in the request. Defaults to None.
-        raises (bool, optional): decide if we should raise the default error or the atscale error. Defaults to True.
+        headers (Dict, optional): the headers to include in the request. Defaults to None.
+        raises (bool, optional): decide if we should raise the default error or the AtScale error. Defaults to True.
 
     Returns:
         requests.Response: the query response
     """
     if session is None:
-        session = requests.Session()
-    response = session.delete(url=url, data=data, headers=headers, stream=False)
+        response = requests.delete(url, data=data, headers=headers, stream=False)
+    else:
+        response = session.delete(url, data=data, headers=headers, stream=False)
+        session.close()
     if raises:
         check_response(response)
     return response
@@ -241,7 +248,7 @@ def parse_rest_query_response(
         response.text
     )  # using text instead of content so we can process special characters
     if re.search("<succeeded>(.*?)</succeeded>", content).group(1) == "false":
-        raise Exception(
+        raise atscale_errors.AtScaleServerError(
             re.search("<error-message>(.*?)</error-message>", " ".join(content.split("\n"))).group(
                 1
             )
@@ -262,7 +269,13 @@ def parse_rest_query_response(
                 # leave as nan if all null
                 if first_value_index is not None:
                     # If date parse fails, just pass and leave the column as is
-                    dates = pd.to_datetime(df[column], errors="raise", infer_datetime_format=True)
+                    # infer_datetime_format is needed prior to Pandas 2.0.0 we can remove this if that becomes our required version
+                    if int(pd.__version__.split(".")[0]) == 1:
+                        dates = pd.to_datetime(
+                            df[column], errors="raise", infer_datetime_format=True
+                        )
+                    else:
+                        dates = pd.to_datetime(df[column], errors="raise")
                     # If it succeeds and there is a ":" is is a datetime so we just set the column
                     if ":" in df[column][first_value_index]:
                         df[column] = dates

@@ -34,8 +34,8 @@
 import unittest
 from binascii import unhexlify, hexlify
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Util.strxor import strxor, strxor_c
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Util.strxor import strxor, strxor_c
 
 
 class StrxorTests(unittest.TestCase):

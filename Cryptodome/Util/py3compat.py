@@ -39,7 +39,7 @@ string produces another byte string, but the indexing operation produces an
 integer.  Data read from a file is of '''str'' type if the file was opened in
 text mode, or of ''bytes'' type otherwise.
 
-Since PyCryptodome aims at supporting both Python 2.x and 3.x, the following helper
+Since PyCrypto aims at supporting both Python 2.x and 3.x, the following helper
 functions are used to keep the rest of the library as independent as possible
 from the actual Python version.
 
@@ -86,6 +86,14 @@ if sys.version_info[0] == 2:
         return bs
     def byte_string(s):
         return isinstance(s, str)
+
+    # In Python 2, a memoryview does not support concatenation
+    def concat_buffers(a, b):
+        if isinstance(a, memoryview):
+            a = a.tobytes()
+        if isinstance(b, memoryview):
+            b = b.tobytes()
+        return a + b
 
     from StringIO import StringIO
     BytesIO = StringIO
@@ -136,6 +144,9 @@ else:
         return bs.decode("latin-1")
     def byte_string(s):
         return isinstance(s, bytes)
+
+    def concat_buffers(a, b):
+        return a + b
 
     from io import BytesIO
     from io import StringIO

@@ -22,13 +22,13 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-test suite for Cryptodome.Hash.SHA512"""
+"""Self-test suite for Crypto.Hash.SHA512"""
 
 from binascii import hexlify
 
-from Cryptodome.Hash import SHA512
+from Crypto.Hash import SHA512
 from .common import make_hash_tests
-from Cryptodome.SelfTest.loader import load_test_vectors
+from Crypto.SelfTest.loader import load_test_vectors
 
 # Test vectors from various sources
 # This is a list of (expected_result, input[, description]) tuples.

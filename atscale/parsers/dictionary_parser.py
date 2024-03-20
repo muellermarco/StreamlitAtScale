@@ -1,42 +1,22 @@
 from typing import List, Dict, Callable
 
 
-def create_empty_branches(
-    json_reference: dict,
-):
-    pass
-
-
-def path_exists(
-    dict_item_this,
-    dict_item_other,
-    path: List[str],
-):
-    for key in path:
-        if key in dict_item_this and key in dict_item_other:
-            dict_item_this = dict_item_this[key]
-            dict_item_other = dict_item_other[key]
-        else:
-            return False
-    return True
-
-
 def parse_dict_list(
     dict_list: list,
     key,
     value,
-) -> dict:
+) -> Dict:
     """Return the first dict in dict_list where dict.get(key)==value.
     This method does not search beyond the top level of the dict (since
     some values like 'id' recur multiple times)
 
     Args:
         dict_list (list): a list of python dictionaries
-        key (_type_): the key to search for at the top level of the dict (i.e. this does not recurse)
-        value (_type_): if key is found, the value it should have to return that dict
+        key: the key to search for at the top level of the dict (i.e. this does not recurse)
+        value: if key is found, the value it should have to return that dict
 
     Returns:
-        dict: the dict in the dict_list where dict.get(key)==value
+        Fict: the dict in the dict_list where dict.get(key)==value
     """
     if dict_list is None:
         return None
@@ -47,7 +27,7 @@ def parse_dict_list(
 
 
 def _find_by_id_or_name(
-    item_list: List[dict],
+    item_list: List[Dict],
     item_id: str = None,
     item_name: str = None,
     id_key: str = "id",
@@ -62,7 +42,7 @@ def _find_by_id_or_name(
         key = name_key
         val = item_name
     else:
-        raise Exception("Either an id or name must be passed in order to identify the item")
+        raise ValueError("Either an id or name must be passed in order to identify the item")
     for item in item_list:
         if item[key] == val:
             return item
@@ -71,7 +51,7 @@ def _find_by_id_or_name(
 
 
 def filter_dict(
-    to_filter: dict,
+    to_filter: Dict,
     key_filters: List[Callable] = None,
     val_filters: List[Callable] = None,
 ):
@@ -92,7 +72,7 @@ def filter_dict(
 
 
 def filter_list_of_dicts(
-    dict_list: List[dict],
+    dict_list: List[Dict],
     by: Dict[str, set],
 ):
     remaining = []

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 #
-#  SelfTest/Util/test_Counter: Self-test for the Cryptodome.Util.Counter module
+#  SelfTest/Util/test_Counter: Self-test for the Crypto.Util.Counter module
 #
 # Written in 2009 by Dwayne C. Litzenberger <dlitz@dlitz.net>
 #
@@ -22,16 +22,16 @@
 # SOFTWARE.
 # ===================================================================
 
-"""Self-tests for Cryptodome.Util.Counter"""
+"""Self-tests for Crypto.Util.Counter"""
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
 import unittest
 
 class CounterTests(unittest.TestCase):
     def setUp(self):
         global Counter
-        from Cryptodome.Util import Counter
+        from Crypto.Util import Counter
 
     def test_BE(self):
         """Big endian"""
@@ -57,7 +57,7 @@ class CounterTests(unittest.TestCase):
         self.assertRaises(ValueError, Counter.new, 16, initial_value=0x1FFFF)
 
 def get_tests(config={}):
-    from Cryptodome.SelfTest.st_common import list_test_cases
+    from Crypto.SelfTest.st_common import list_test_cases
     return list_test_cases(CounterTests)
 
 if __name__ == '__main__':

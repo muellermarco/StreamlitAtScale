@@ -26,13 +26,13 @@ Electronic Code Book (ECB) mode.
 
 __all__ = [ 'EcbMode' ]
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   VoidPointer, create_string_buffer,
                                   get_raw_buffer, SmartPointer,
                                   c_size_t, c_uint8_ptr,
                                   is_writeable_buffer)
 
-raw_ecb_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._raw_ecb", """
+raw_ecb_lib = load_pycryptodome_raw_lib("Crypto.Cipher._raw_ecb", """
                     int ECB_start_operation(void *cipher,
                                             void **pResult);
                     int ECB_encrypt(void *ecbState,
@@ -207,7 +207,7 @@ def _create_ecb_cipher(factory, **kwargs):
 
     :Parameters:
       factory : module
-        The underlying block cipher, a module from ``Cryptodome.Cipher``.
+        The underlying block cipher, a module from ``Crypto.Cipher``.
 
     All keywords are passed to the underlying block cipher.
     See the relevant documentation for details (at least ``key`` will need

@@ -1,5 +1,5 @@
-import inspect
 import logging
+from inspect import getfullargspec
 import json
 import pandas as pd
 from typing import Callable, List, Dict, Union, Any, Tuple
@@ -10,24 +10,15 @@ from atscale.parsers import (
     data_model_parser,
     project_parser,
     dictionary_parser,
-    dataset_parser as dsp,
+    dataset_parser,
+    dictionary_parser,
 )
+from atscale.project import project_helpers
 from atscale.project.project import Project
-from atscale.utils import model_utils, metadata_utils, project_utils, input_utils, db_utils
+from atscale.utils import model_utils, metadata_utils, project_utils, db_utils
 from atscale.utils import request_utils, dimension_utils, feature_utils, query_utils
-from atscale.utils import validation_utils, bulk_operator_utils
-from atscale.utils.dmv_utils import get_dmv_data
-from atscale.base import endpoints
-from atscale.base.enums import PandasTableExistsActionType, PysparkTableExistsActionType, Level
-from atscale.base.enums import Hierarchy, FeatureType, MappedColumnDataTypes, TimeSteps
-from atscale.base.enums import FeatureFormattingType, Aggs, MDXAggs, RequestType
-from atscale.base.enums import (
-    MappedColumnKeyTerminator,
-    MappedColumnFieldTerminator,
-    CheckFeaturesErrMsg,
-)
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+from atscale.utils import validation_utils, bulk_operator_utils, dmv_utils
+from atscale.base import endpoints, enums
 from atscale.data_model import data_model_helpers
 
 logger = logging.getLogger(__name__)
@@ -35,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class DataModel:
     """Creates an object corresponding to an AtScale Data Model. Takes an existing model id and
-    AtScale Project object to construct an object that deals with functionality related to model level
+    AtScale Project object to construct an object that deals with functionality related to model
     datasets and columns, as well as reading data and writing back predictions.
     """
 
@@ -51,7 +42,7 @@ class DataModel:
             project (Project): the AtScale Project object the model is a part of
         """
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         self.__id = data_model_id
         self.project = project
@@ -74,9 +65,6 @@ class DataModel:
 
         Args:
             value: setter cannot be used.
-
-        Raises:
-            Exception: Raises a value if the setter is attempted.
         """
         raise atscale_errors.UnsupportedOperationException(
             "The value of data_model_id is final; it cannot be altered."
@@ -110,9 +98,6 @@ class DataModel:
 
         Args:
             value: setter cannot be used.
-
-        Raises:
-            Exception: Raises a value if the setter is attempted.
         """
         raise atscale_errors.UnsupportedOperationException(
             "The value of data_model_id is final; it cannot be altered."
@@ -137,8 +122,6 @@ class DataModel:
         Args:
             value (Project): The new project to associate the model with.
 
-        Raises:
-            ValueError: If the new Project is not associated with the DataModel.
         """
         if value is None:
             raise ValueError("The provided value is None.")
@@ -158,29 +141,30 @@ class DataModel:
         self,
         feature_list: List[str] = None,
         folder_list: List[str] = None,
-        feature_type: FeatureType = FeatureType.ALL,
+        feature_type: enums.FeatureType = enums.FeatureType.ALL,
         use_published: bool = True,
-    ) -> dict:
+    ) -> Dict:
         """Gets the feature names and metadata for each feature in the published DataModel.
 
         Args:
             feature_list (List[str], optional): A list of feature query names to return. Defaults to None to return all. All
                 features in this list must exist in the model.
             folder_list (List[str], optional): A list of folders to filter by. Defaults to None to ignore folder.
-            feature_type (FeatureType, optional): The type of features to filter by. Options
-                include FeatureType.ALL, FeatureType.CATEGORICAL, or FeatureType.NUMERIC. Defaults to ALL.
+            feature_type (enums.FeatureType, optional): The type of features to filter by. Options
+                include enums.FeatureType.ALL, enums.FeatureType.CATEGORICAL, or enums.FeatureType.NUMERIC. Defaults to ALL.
             use_published (bool, optional): whether to get the features of the published or draft data model.
                 Defaults to True to use the published version.
 
         Returns:
-            dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
+            Dict: A dictionary of dictionaries where the feature names are the keys in the outer dictionary
                   while the inner keys are the following: 'data_type'(value is a level-type, 'Aggregate', or 'Calculated'),
                   'description', 'expression', caption, 'folder', and 'feature_type'(value is Numeric or Categorical).
         """
         inspection = getfullargspec(self.get_features)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if use_published:
+            project_helpers._check_published(self.project)
             ret_dict = data_model_helpers._get_published_features(
                 self, feature_list=feature_list, folder_list=folder_list, feature_type=feature_type
             )
@@ -215,9 +199,10 @@ class DataModel:
             model_utils._check_features(
                 features=feature_list,
                 check_list=ret_dict,
-                errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=use_published),
+                errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=use_published),
             )
 
+        ret_dict = dict(sorted(ret_dict.items(), key=lambda x: x[0].upper()))
         return ret_dict
 
     def is_perspective(self) -> bool:
@@ -231,19 +216,6 @@ class DataModel:
         else:
             return False
 
-    def _get_referenced_project_datasets(self) -> List[dict]:
-        """Returns a list of all project datasets referenced by this model, but not ones referenced by a dimension. In
-        other words, this returns all fact datasets that exist in this model.
-
-        Returns:
-            list[dict]: list of all project datasets referenced by this model
-        """
-        project_dict = self.__project._get_dict()
-        data_model_dict = model_utils._get_model_dict(self, project_dict=project_dict)[0]
-        return model_utils._get_fact_datasets(
-            data_model_dict=data_model_dict, project_dict=project_dict
-        )
-
     def get_fact_dataset_names(self) -> List[str]:
         """Gets the name of all fact datasets currently utilized by the DataModel and returns as a list.
 
@@ -252,12 +224,13 @@ class DataModel:
         """
         project_dict = self.__project._get_dict()
         data_model_dict = model_utils._get_model_dict(self, project_dict=project_dict)[0]
-        return [
+        ret_list = [
             ds["name"]
             for ds in model_utils._get_fact_datasets(
                 data_model_dict=data_model_dict, project_dict=project_dict
             )
         ]
+        return sorted(ret_list, key=lambda x: x.upper())
 
     def get_dimension_dataset_names(
         self,
@@ -268,7 +241,8 @@ class DataModel:
             List[str]: list of dimension dataset names
         """
         project_dict = self.__project._get_dict()
-        return [ds["name"] for ds in model_utils._get_dimension_datasets(self, project_dict)]
+        ret_list = [ds["name"] for ds in model_utils._get_dimension_datasets(self, project_dict)]
+        return sorted(ret_list, key=lambda x: x.upper())
 
     def get_dataset_names(self, include_unused: bool = False) -> List[str]:
         """Gets the name of all datasets currently utilized by the DataModel and returns as a list.
@@ -281,7 +255,7 @@ class DataModel:
             List[str]: list of dataset names
         """
         inspection = getfullargspec(self.get_dataset_names)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.__project._get_dict()
         if include_unused:
@@ -292,25 +266,38 @@ class DataModel:
             dimension_dsets = model_utils._get_dimension_datasets(self, project_dict)
             datasets = fact_dsets + dimension_dsets
         names = {dset["name"] for dset in datasets}
-        return sorted(list(names))
+        return sorted(list(names), key=lambda x: x.upper())
 
-    def get_dataset(self, dataset_name: str) -> str:
+    def get_dataset(self, dataset_name: str) -> Dict:
         """Gets the metadata of a dataset.
 
         Args:
             dataset_name (str): The name of the dataset to pull.
 
         Returns:
-            dict: A dictionary of the metadata for the dataset.
+            Dict: A dictionary of the metadata for the dataset.
         """
         inspection = getfullargspec(self.get_dataset)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.__project._get_dict()
         dataset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
 
         if not dataset:
-            raise atscale_errors.UserError(f"Dataset: '{dataset_name}' not found.")
+            raise atscale_errors.ObjectNotFoundError(f"Dataset: '{dataset_name}' not found.")
+
+        dataset_id = dataset["id"]
+        cube_dict = project_parser.get_cube(project_dict, self.id)
+        dataset_refs = data_model_parser._get_dataset_refs(cube_dict=cube_dict)
+        dataset_ref = [ref for ref in dataset_refs if ref["id"] == dataset_id]
+        if len(dataset_ref) > 0:
+            create_hinted_aggregate = dataset_ref[0]["properties"].get(
+                "create-hinted-aggregate", False
+            )
+            allow_aggregates = dataset_ref[0]["properties"].get("allow-aggregates", False)
+        else:
+            create_hinted_aggregate = False
+            allow_aggregates = dataset["properties"].get("allow-aggregates", False)
 
         data_model_dict = model_utils._get_model_dict(self, project_dict=project_dict)[0]
         fact_dsets = [
@@ -326,11 +313,25 @@ class DataModel:
             if ds["name"] == dataset_name
         ]
 
+        incremental_indicator = None
+        ref_id = (
+            dataset.get("logical", {}).get("incremental-indicator", {}).get("key-ref", {}).get("id")
+        )
+        if ref_id:
+            ref = [
+                x for x in dataset.get("logical", {}).get("key-ref", []) if x.get("id") == ref_id
+            ]
+            incremental_indicator = ref[0]["column"][0]
+
         ret_dict = {
             "name": dataset["name"],
             "used_in_fact": len(fact_dsets) > 0,
             "used_in_dimension": len(dimension_dsets) > 0,
-            "allow_aggregates": dataset["properties"]["allow-aggregates"],
+            "allow_aggregates": allow_aggregates,
+            "create_hinted_aggregate": create_hinted_aggregate,
+            "safe_to_join_to_incremental": dataset["physical"].get("immutable", False),
+            "incremental_indicator": incremental_indicator,
+            "grace_period": dataset["logical"].get("incremental-indicator", {}).get("grace-period"),
             "warehouse_id": dataset["physical"]["connection"]["id"],
             "columns": [],
         }
@@ -360,30 +361,32 @@ class DataModel:
             bool: true if name found, else false.
         """
         inspection = getfullargspec(self.dataset_exists)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         return dataset_name in self.get_dataset_names(include_unused=include_unused)
 
     def get_columns(
         self,
         dataset_name: str,
-    ) -> dict:
+    ) -> Dict:
         """Gets all currently visible columns in a given dataset, case-sensitive.
 
         Args:
             dataset_name (str): the name of the dataset to get columns from, case-sensitive.
 
         Returns:
-            dict: the columns in the given dataset
+            Dict: the columns in the given dataset
         """
         inspection = getfullargspec(self.get_columns)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.__project._get_dict()
         if not self.dataset_exists(dataset_name, include_unused=True):
-            raise atscale_errors.UserError(f"Dataset: '{dataset_name}' not found.")
+            raise atscale_errors.ObjectNotFoundError(f"Dataset: '{dataset_name}' not found.")
 
-        return model_utils._get_columns(project_dict, dataset_name=dataset_name)
+        ret_dict = model_utils._get_columns(project_dict, dataset_name=dataset_name)
+        ret_dict = dict(sorted(ret_dict.items(), key=lambda x: x[0].upper()))
+        return ret_dict
 
     def column_exists(
         self,
@@ -400,12 +403,12 @@ class DataModel:
             bool: true if name found, else false.
         """
         inspection = getfullargspec(self.column_exists)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.__project._get_dict()
 
         if not self.dataset_exists(dataset_name, include_unused=True):
-            raise atscale_errors.UserError(f"Dataset: '{dataset_name}' not found.")
+            raise atscale_errors.ObjectNotFoundError(f"Dataset: '{dataset_name}' not found.")
 
         return model_utils._column_exists(
             project_dict, dataset_name=dataset_name, column_name=column_name
@@ -427,25 +430,24 @@ class DataModel:
             delete_children (bool, optional): Defaults to None, if set to True or False no prompt will be given in the case of
                 any other measures being derived from the given measure_name. Instead, these measures will also be deleted when
                 delete_children is True, alternatively, if False, the method will be aborted with no changes to the data model
-
-        Raises:
-            DependentMeasureException: if child measures are encountered and the method is aborted
-            atscale_errors.UserError: if a measure_name is not found in the data model"""
+        """
         model_utils._perspective_check(
             self, "Delete operations are not supported for perspectives."
         )
 
         inspection = getfullargspec(self.delete_measures)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         json_dict = self.project._get_dict()
         existing = data_model_helpers._get_draft_features(
-            project_dict=json_dict, data_model_name=self.name, feature_type=FeatureType.NUMERIC
+            project_dict=json_dict,
+            data_model_name=self.name,
+            feature_type=enums.FeatureType.NUMERIC,
         )
         model_utils._check_features(
             features=measure_list,
             check_list=existing,
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
         )
         feature_utils._delete_measures(
             data_model=self,
@@ -453,131 +455,17 @@ class DataModel:
             json_dict=json_dict,
             delete_children=delete_children,
         )
-        self.project._update_project(project_json=json_dict, publish=publish)
-
-    def add_query_dataset(
-        self,
-        dataset_name: str,
-        query: str,
-        warehouse_id: str = None,
-        join_features: List[str] = None,
-        join_columns: List[str] = None,
-        roleplay_features: List[str] = None,
-        publish: bool = True,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
-        force_replace: bool = False,
-        delete_children: bool = None,
-        allow_aggregates: bool = True,
-        create_hinted_aggregate: bool = False,
-    ):
-        """Creates a new Query Dataset in this data model which provides results of executing the given query against
-        the warehouse of given warehouse_id or the warehouse associated with the data model if warehouse_id is not
-        passed.
-
-        Args:
-            dataset_name (str): The display and query name of the dataset
-            query (str): A valid SQL expression with which to directly query the warehouse of the given warehouse_id.
-            warehouse_id (str, optional): The warehouse id of the warehouse this qds and its data model are pointing at.
-                Defaults to None to use the warehouse_id of existing datasets in the model.
-            join_features (list, optional): a list of feature query names in the data model to use for joining. If None it will not
-                join the qds to anything. Defaults to None.
-            join_columns (list, optional): The column names in the dataset to join to the join_features. List must be either
-                None or the same length and order as join_features. Defaults to None to use identical names to the
-                join_features. If multiple columns are needed for a single join they should be in a nested list
-            roleplay_features (list, optional): The roleplays to use on the relationships. List must be either
-                None or the same length and order as join_features. Use '' to not roleplay that relationship. Defaults to None.
-            publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
-            if_exists (PandasTableExistsActionType, optional): What to do if a table with table_name already exists. Defaults to PandasTableExistsActionType.FAIL.
-            force_replace (bool, optional): When if_exists = REPLACE and this is true, does not prompt. Defaults to False.
-            delete_children (bool, optional): Whether dependent features of a dataset should be deleted in the case when
-                a dataset already exists and is being replaced. Defaults to None to prompt for input upon this scenario.
-            allow_aggregates(bool, optional): Whether to allow aggregates to be built off of this QDS. Defaults to True.
-            create_hinted_aggregate(bool, optional): Whether to generate an aggregate table for all measures and keys in this QDS to improve join performance. Defaults to False.
-        """
-        logger.warn(
-            "The function add_query_dataset is will be deprecated in version 2.6, please use DataModel.create_dataset instead. "
-        )
-        model_utils._perspective_check(self)
-        inspection = getfullargspec(self.add_query_dataset)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
-
-        project_dict = self.project._get_dict()
-
-        warehouse_id = validation_utils._validate_warehouse_id_parameter(
-            atconn=self.project._atconn, project_dict=project_dict, warehouse_id=warehouse_id
-        )
-
-        # check if there is an existing dataset with the given name
-        existing_dset = project_parser.get_dataset(
-            project_dict=project_dict, dataset_name=dataset_name
-        )
-        # if there was a found dataset, respond based on if_exists parameter.
-        if existing_dset:
-            if if_exists == PandasTableExistsActionType.FAIL:
-                raise ValueError(f"A dataset already exists with the name {dataset_name}")
-            elif if_exists == PandasTableExistsActionType.APPEND:
-                raise atscale_errors.UnsupportedOperationException(
-                    f"Appending to a query dataset is not currently supported."
-                )
-            else:
-                if force_replace == True:
-                    delete = True
-                else:
-                    delete = input_utils.prompt_yes_no(
-                        question=f"Dataset {dataset_name} already exists in the project,"
-                        f"would you like to replace it? This will delete any "
-                        f"previous usages in any model in this project."
-                    )
-                if not delete:
-                    raise ValueError(
-                        f"A dataset already exists with the name {dataset_name} and QDS "
-                        f"creation has been aborted to protect it."
-                    )
-                self.project.delete_dataset(
-                    dataset_name=dataset_name, delete_children=delete_children, publish=False
-                )  # will prompt if it used in any dimensions or measures
-                # get fresh dict after deleting dataset
-                project_dict = self.project._get_dict()
-
-        # check to see that features are in the data model and can join
-        columns = self.project._atconn._get_query_columns(warehouse_id=warehouse_id, query=query)
-        column_names = {col[0] for col in columns}
-        join_features, join_columns, roleplay_features, _ = data_model_helpers._check_joins(
-            project_dict=project_dict,
-            cube_id=self.cube_id,
-            join_features=join_features,
-            join_columns=join_columns,
-            roleplay_features=roleplay_features,
-            column_set=column_names,
-        )
-        qds_dict = project_utils._create_query_dataset(
-            name=dataset_name,
-            query=query,
-            columns=columns,
-            warehouse_id=warehouse_id,
-            allow_aggregates=allow_aggregates,
-        )
-        project_utils.add_dataset(project_dict=project_dict, dataset=qds_dict)
-
-        # now add ref to data model
-        model_utils._create_dataset_relationship_from_dataset(
-            project_dict=project_dict,
-            cube_id=self.cube_id,
-            dataset_name=dataset_name,
-            join_features=join_features,
-            join_columns=join_columns,
-            roleplay_features=roleplay_features,
-            allow_aggregates=allow_aggregates,
-            create_hinted_aggregate=create_hinted_aggregate,
-        )
-
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=json_dict, publish=publish)
 
     def update_dataset(
         self,
         dataset_name: str,
         allow_aggregates: bool = None,
         create_hinted_aggregate: bool = None,
+        incremental_indicator: str = None,
+        grace_period: int = None,
+        safe_to_join_to_incremental: bool = None,
+        create_fact_from_dimension: bool = False,
         publish: bool = True,
     ):
         """Updates aggregate settings for an existing Dataset in the data model.
@@ -586,27 +474,52 @@ class DataModel:
             dataset_name (str): The display and query name of the dataset to edit
             allow_aggregates(bool, optional): The new setting for if aggregates are allowed to be built off of this QDS. Defaults to None for no update.
             create_hinted_aggregate(bool, optional): The setting for if an aggregate table is generated for all measures and keys in this QDS. Defaults to None for no update.
+            incremental_indicator (string, optional): The indicator column for incremental builds. Defaults to None for no update.
+            grace_period (int, optional): The grace period for incremental builds. Defaults to None for no update.
+            safe_to_join_to_incremental (bool, optional): Whether it is safe to join from this dataset to one with incremental builds enabled. Defaults to None for no update.
+            create_fact_from_dimension (bool, optional): Whether to create a fact dataset if the current dataset is only used with dimensions. Defaults to False.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
-        # validate the non-null inputs
-        validation_utils.validate_required_params_not_none(
-            local_vars=locals(),
-            inspection=inspect.getfullargspec(self.update_dataset),
-        )
+        inspection = getfullargspec(self.update_dataset)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         dset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid parameter: dataset name '{dataset_name}' does not exist"
             )
         if (not project_utils._check_if_qds(dset)) and create_hinted_aggregate is not None:
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"Invalid parameter: create_hinted_aggregate is only available for qds datasets and '{dataset_name}' is not a qds"
             )
+        dataset_columns: List[dataset_parser.Column] = dataset_parser.Dataset(
+            project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
+        ).columns
+        column_set = [c.name for c in dataset_columns]
+        if (
+            incremental_indicator is not None
+            and incremental_indicator != ""
+            and incremental_indicator not in column_set
+        ):
+            raise atscale_errors.ObjectNotFoundError(
+                f"Invalid parameter: incremental_indicator: '{incremental_indicator}' is not a column in dataset {dataset_name}'"
+            )
+
+        cube_dict = project_parser.get_cube(project_dict, self.cube_id)
+        dataset_refs = data_model_parser._get_dataset_refs(cube_dict=cube_dict)
+        dataset_ref = [
+            dataset_ref for dataset_ref in dataset_refs if dataset_ref["id"] == dset["id"]
+        ]
+        if create_hinted_aggregate and len(dataset_ref) == 0:
+            raise atscale_errors.WorkFlowError(
+                f"Hinted aggregates can only be created for fact datasets and {dataset_name} is only a dimension dataset"
+            )
+        if create_fact_from_dimension and len(dataset_ref) > 0:
+            raise ValueError(f"Dataset {dataset_name} is already a fact dataset")
 
         project_utils._update_dataset(
             project_dict=project_dict,
@@ -614,9 +527,13 @@ class DataModel:
             cube_id=self.cube_id,
             allow_aggregates=allow_aggregates,
             create_hinted_aggregate=create_hinted_aggregate,
+            incremental_indicator=incremental_indicator,
+            grace_period=grace_period,
+            safe_to_join_to_incremental=safe_to_join_to_incremental,
+            create_fact_from_dimension=create_fact_from_dimension,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_dataset(
         self,
@@ -628,6 +545,10 @@ class DataModel:
         warehouse_id: str = None,
         allow_aggregates: bool = True,
         create_hinted_aggregate: bool = False,
+        dimension_only: bool = False,
+        incremental_indicator: str = None,
+        grace_period: int = 0,
+        safe_to_join_to_incremental: bool = False,
         publish: bool = True,
     ):
         """Creates a dataset in the data model.
@@ -636,17 +557,29 @@ class DataModel:
             dataset_name (str): The display and query name of the dataset to edit
             table_name (str, optional): The name of the table to use. Defaults to None to use a query.
             database (str, optional): The database of the table to use. Defaults to None to use a query.
-            schema(str, optional): The schema of the table to use. Defaults to None to use a query.
-            query(str, optional): The sql query if creating a query dataset. Defaults to None to use a table.
-            warehouse_id(str, optional): The warehouse to associate the dataset with. Defaults to None to infer from the model.
-            allow_aggregates(bool, optional): The new setting for if aggregates are allowed to be built off of this dataset. Defaults to True.
-            create_hinted_aggregate(bool, optional): The setting for if an aggregate table is generated for all measures and keys if this is a QDS. Defaults to False.
+            schema (str, optional): The schema of the table to use. Defaults to None to use a query.
+            query (str, optional): The sql query if creating a query dataset. Defaults to None to use a table.
+            warehouse_id (str, optional): The warehouse to associate the dataset with. Defaults to None to infer from the model.
+            allow_aggregates (bool, optional): The new setting for if aggregates are allowed to be built off of this dataset. Defaults to True.
+            create_hinted_aggregate (bool, optional): The setting for if an aggregate table is generated for all measures and keys if this is a QDS. Defaults to False.
+            dimension_only (bool, optional): Whether the dataset is only going to be used for dimensions. Defaults to False.
+            incremental_indicator (string, optional): The indicator column for incremental builds. Defaults to None to not enable incremental builds.
+            grace_period (int, optional): The grace period for incremental builds. Defaults to 0.
+            safe_to_join_to_incremental (bool, optional): Whether it is safe to join from this dataset to one with incremental builds enabled. Defaults to False.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_dataset)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if grace_period < 0:
+            raise ValueError("grace_period cannot be less than 0.")
+
+        if dimension_only and create_hinted_aggregate:
+            raise ValueError(
+                "Hinted aggregates can only be created for fact datasets so either dimension_only or create_hinted_aggregate must be False "
+            )
 
         project_dict = self.project._get_dict()
 
@@ -654,9 +587,10 @@ class DataModel:
         existing_dset = project_parser.get_dataset(
             project_dict=project_dict, dataset_name=dataset_name
         )
-        # if there was a found dataset, respond based on if_exists parameter.
         if existing_dset:
-            raise ValueError(f"A dataset already exists with the name {dataset_name}")
+            raise atscale_errors.CollisionError(
+                f"A dataset already exists with the name {dataset_name}"
+            )
 
         warehouse_id = validation_utils._validate_warehouse_id_parameter(
             atconn=self.project._atconn, project_dict=project_dict, warehouse_id=warehouse_id
@@ -669,7 +603,14 @@ class DataModel:
                 database=database,
                 schema=schema,
             )
+            if incremental_indicator is not None:
+                found = [col[0] for col in columns if col[0] == incremental_indicator]
+                if not found:
+                    raise atscale_errors.ObjectNotFoundError(
+                        f"Incremental indicator: {incremental_indicator} not found in dataset columns"
+                    )
             project_dataset, dataset_id = project_utils.create_dataset(
+                project_dict,
                 table_name,
                 warehouse_id,
                 columns,
@@ -677,30 +618,49 @@ class DataModel:
                 schema,
                 dataset_name=dataset_name,
                 allow_aggregates=allow_aggregates,
+                incremental_indicator=incremental_indicator,
+                grace_period=grace_period,
+                safe_to_join_to_incremental=safe_to_join_to_incremental,
             )
         else:
             columns = self.project._atconn._get_query_columns(
                 warehouse_id=warehouse_id, query=query
             )
-            column_names = {col[0] for col in columns}
-            project_dataset = project_utils._create_query_dataset(
+            if incremental_indicator is not None:
+                found = [col[0] for col in columns if col[0] == incremental_indicator]
+                if not found:
+                    raise atscale_errors.ObjectNotFoundError(
+                        f"Incremental indicator: {incremental_indicator} not found in dataset columns"
+                    )
+            project_dataset, dataset_id = project_utils._create_query_dataset(
+                project_dict,
                 name=dataset_name,
                 query=query,
-                columns=column_names,
+                columns=columns,
                 warehouse_id=warehouse_id,
                 allow_aggregates=allow_aggregates,
+                incremental_indicator=incremental_indicator,
+                grace_period=grace_period,
+                safe_to_join_to_incremental=safe_to_join_to_incremental,
             )
-            dataset_id = project_dataset["id"]
 
-        project_utils.add_dataset(project_dict, project_dataset)
-        model_dict = model_utils._get_model_dict(self, project_dict)[0]
-        model_utils._add_data_set_ref(
-            model_dict,
-            dataset_id,
-            allow_aggregates=allow_aggregates,
-            create_hinted_aggregate=create_hinted_aggregate,
-        )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        if incremental_indicator:
+            attribute_key = {
+                "id": project_dataset["logical"]["incremental-indicator"]["key-ref"]["id"],
+                "properties": {"columns": 1, "visible": True},
+            }
+            project_dict.setdefault("attributes", {}).setdefault("attribute-key", []).append(
+                attribute_key
+            )
+        if not dimension_only:
+            model_dict = model_utils._get_model_dict(self, project_dict)[0]
+            model_utils._add_data_set_ref(
+                model_dict,
+                dataset_id,
+                allow_aggregates=allow_aggregates,
+                create_hinted_aggregate=create_hinted_aggregate,
+            )
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def write_feature_importance(
         self,
@@ -710,7 +670,7 @@ class DataModel:
         feature_name_prefix: str,
         folder: str = None,
         publish: bool = True,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         warehouse_id: str = None,
     ):
         """Writes the dataframe with columns containing feature query names and their importances to a table in the database accessed by dbconn with the given table_name.
@@ -723,14 +683,19 @@ class DataModel:
             feature_name_prefix (str): string to prepend to new feature query names to make them easily identifiable
             folder (str): The folder to put the newly created items in. Defaults to None.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
-            if_exists (PandasTableExistsActionType, optional): What to do if a table with table_name already exists. Defaults to PandasTableExistsActionType.FAIL.
+            if_exists (enums.TableExistsAction, optional): What to do if a table with table_name already exists. Defaults to enums.TableExistsAction.Error.
             warehouse_id (str, optional): The id of the warehouse at which the data model and this dataset point.
                 Defaults to None to use the warehouse_id of existing datasets in the model.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.write_feature_importance)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         project_dict = self.project._get_dict()
         # verify our sql_connection is pointed at a connection that the model points at, and we'll use
@@ -748,13 +713,12 @@ class DataModel:
         # write the feature importance table to the db
         dbconn.write_df_to_db(table_name=table_name, dataframe=dataframe, if_exists=if_exists)
 
-        if if_exists == PandasTableExistsActionType.REPLACE:
-            database, schema = db_utils.get_database_and_schema(dbconn=dbconn)
+        if if_exists == enums.TableExistsAction.OVERWRITE:
             atscale_table_name = db_utils.get_atscale_tablename(
                 atconn=self.project._atconn,
                 warehouse_id=warehouse_id,
-                database=database,
-                schema=schema,
+                database=dbconn._database,
+                schema=dbconn._schema,
                 table_name=table_name,
             )
             # If we're replacing a table, then the columns may have changed and the data sets need to be updated.
@@ -771,10 +735,9 @@ class DataModel:
             table_name=table_name,
             dbconn=dbconn,
             expected_columns=dataframe.columns,  # will warn if aliased
-            include_dtype=True,  # columns will be tuples
         )
 
-        # map the dataframe column names to atscale column names
+        # map the dataframe column names to AtScale column names
         column_dict = db_utils.get_column_dict(
             atconn=self.project._atconn,
             dbconn=dbconn,
@@ -792,11 +755,9 @@ class DataModel:
         )
         # create a dataset for the new table
         project_dataset, dataset_id = project_utils.create_dataset(
-            atscale_table_name, warehouse_id, columns, database, schema
+            project_dict, atscale_table_name, warehouse_id, columns, database, schema
         )
 
-        # add the dataset into the project dict as well as creates features
-        project_utils.add_dataset(project_dict, project_dataset)
         model_dict = model_utils._get_model_dict(self, project_dict)[0]
         model_utils._add_data_set_ref(model_dict, dataset_id)
         for column in dataframe.columns:
@@ -809,7 +770,7 @@ class DataModel:
                     column_name=name,
                     new_feature_name=feature_name_prefix + "_feature_importance_" + column,
                     folder=folder,
-                    aggregation_type=Aggs.SUM,
+                    aggregation_type=enums.Aggs.SUM,
                 )
             else:
                 dimension_utils.create_categorical_dimension_for_column(
@@ -821,7 +782,7 @@ class DataModel:
                     folder=folder,
                 )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def writeback(
         self,
@@ -832,7 +793,7 @@ class DataModel:
         join_columns: list = None,
         roleplay_features: list = None,
         publish: bool = True,
-        if_exists: PandasTableExistsActionType = PandasTableExistsActionType.FAIL,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
         warehouse_id: str = None,
     ):
         """Writes the dataframe to a table in the database accessed by dbconn with the given table_name. Joins that table to this
@@ -849,7 +810,7 @@ class DataModel:
             roleplay_features (list, optional): The roleplays to use on the relationships. List must be either
                 None or the same length and order as join_features. Use '' to not roleplay that relationship. Defaults to None.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
-            if_exists (PandasTableExistsActionType, optional): What to do if a table with table_name already exists. Defaults to PandasTableExistsActionType.FAIL.
+            if_exists (enums.TableExistsAction, optional): What to do if a table with table_name already exists. Defaults to enums.TableExistsAction.ERROR.
             warehouse_id (str, optional): The id of the warehouse at which the data model and this dataset point.
                 Defaults to None to use the warehouse_id of existing datasets in the model.
 
@@ -857,7 +818,12 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.writeback)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        if if_exists == enums.TableExistsAction.IGNORE:
+            raise ValueError(
+                "IGNORE action type is not supported for this operation, please adjust if_exists parameter"
+            )
 
         project_dict = self.project._get_dict()
         # verify our sql_connection is pointed at a connection that the model points at, and we'll use
@@ -886,13 +852,12 @@ class DataModel:
         dbconn.write_df_to_db(table_name=table_name, dataframe=dataframe, if_exists=if_exists)
 
         # If we're replacing a table, then the columns may have changed and the data sets need to be updated.
-        if if_exists == PandasTableExistsActionType.REPLACE:
-            database, schema = db_utils.get_database_and_schema(dbconn=dbconn)
+        if if_exists == enums.TableExistsAction.OVERWRITE:
             atscale_table_name = db_utils.get_atscale_tablename(
                 atconn=self.project._atconn,
                 warehouse_id=warehouse_id,
-                database=database,
-                schema=schema,
+                database=dbconn._database,
+                schema=dbconn._schema,
                 table_name=table_name,
             )
             self.project._update_project_tables(
@@ -913,7 +878,6 @@ class DataModel:
             dbconn=dbconn,
             table_name=table_name,
             expected_columns=dataframe.columns,
-            include_dtype=True,  # avoids get_table_columns() call in _create_dataset_relationship
         )
 
         aliases = {c[0] for c in atscale_columns}
@@ -922,7 +886,7 @@ class DataModel:
             atscale_columns=aliases,
         )
 
-        # create_dataset_relationship now mutates the project_json and returns, then we're responsible for posting
+        # create_dataset_relationship now mutates the project_dict and returns, then we're responsible for posting
         project_dict = model_utils._create_dataset_relationship(
             atconn=self.project._atconn,
             project_dict=project_dict,
@@ -937,7 +901,7 @@ class DataModel:
             warehouse_id=warehouse_id,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def add_table(
         self,
@@ -970,7 +934,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.add_table)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
@@ -993,16 +957,16 @@ class DataModel:
             update_project=False,
         )
 
+        # have to call _get_atscale_names again because there might be new columns after the update
         columns, atscale_table_name, schema, database = data_model_helpers._get_atscale_names(
             atconn=self.project._atconn,
             warehouse_id=warehouse_id,
             table_name=table_name,
             database=database,
             schema=schema,
-            include_dtype=True,  # tuples of (column_name, column_dtype)
         )
         if atscale_table_name != table_name:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Unable to find table: '{table_name}'. Did you mean '{atscale_table_name}'? "
                 f"If the table exists make sure AtScale has access to it"
             )
@@ -1033,7 +997,7 @@ class DataModel:
             allow_aggregates=allow_aggregates,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_dataset_relationship(
         self,
@@ -1058,18 +1022,18 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_dataset_relationship)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         original_project_dict = self.project._get_dict()
 
         if not project_parser.get_dataset(
             project_dict=original_project_dict, dataset_name=dataset_name
         ):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"No dataset with the name {dataset_name} found in project"
             )
 
-        dset = dsp.Dataset(
+        dset = dataset_parser.Dataset(
             project_parser.get_dataset(
                 project_dict=self.project._get_dict(), dataset_name=dataset_name
             )
@@ -1084,7 +1048,7 @@ class DataModel:
             )  # update the project tables to get the latest columns
         # dataset may have been written from a table and thus aliased upper or lower case
 
-        dataset_columns: List[dsp.Column] = dsp.Dataset(
+        dataset_columns: List[dataset_parser.Column] = dataset_parser.Dataset(
             project_parser.get_dataset(
                 project_dict=original_project_dict, dataset_name=dataset_name
             )
@@ -1111,7 +1075,7 @@ class DataModel:
             join_columns=join_columns,
             roleplay_features=roleplay_features,
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def get_data(
         self,
@@ -1173,7 +1137,10 @@ class DataModel:
             DataFrame: A pandas DataFrame containing the query results.
         """
         inspection = getfullargspec(self.get_data)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         # set use_aggs and gen_aggs to True because we set them in the json when using the api
         # and this stops the flags being commented into the query
@@ -1269,7 +1236,10 @@ class DataModel:
             DataFrame: The results of the query as a DataFrame
         """
         inspection = getfullargspec(self.get_data_direct)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         df = dbconn.submit_query(
             query_utils._generate_db_query(
@@ -1325,7 +1295,7 @@ class DataModel:
         gen_aggs=True,
         raise_multikey_warning=True,
     ) -> pd.DataFrame:
-        """Establishes a jdbc connection to Atscale with the supplied information. Then submits query against the published project and returns the results in a pandas DataFrame.
+        """Establishes a jdbc connection to AtScale with the supplied information. Then submits query against the published project and returns the results in a pandas DataFrame.
 
         Args:
             feature_list (List[str]): The list of feature query names to query.
@@ -1354,7 +1324,10 @@ class DataModel:
             DataFrame: A pandas DataFrame containing the query results.
         """
         inspection = getfullargspec(self.get_data_jdbc)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         query = query_utils._generate_atscale_query(
             data_model=self,
@@ -1391,7 +1364,13 @@ class DataModel:
         for column, type in list(zip(columns, types)):
             type_lower = type.values[0].lower()
             if "date" in type_lower or "time" in type_lower:
-                df[column] = pd.to_datetime(df[column], errors="coerce", infer_datetime_format=True)
+                # infer_datetime_format is needed prior to Pandas 2.0.0 we can remove this if that becomes our required version
+                if int(pd.__version__.split(".")[0]) == 1:
+                    df[column] = pd.to_datetime(
+                        df[column], errors="coerce", infer_datetime_format=True
+                    )
+                else:
+                    df[column] = pd.to_datetime(df[column], errors="coerce")
 
         model_utils._check_duplicate_features_get_data(feature_list)
 
@@ -1455,12 +1434,15 @@ class DataModel:
             pyspark.sql.dataframe.DataFrame: A pyspark DataFrame containing the query results.
         """
         inspection = getfullargspec(self.get_data_spark_jdbc)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         try:
             from pyspark.sql import SparkSession
         except ImportError as e:
             raise atscale_errors.AtScaleExtrasDependencyImportError("spark", str(e))
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         query = query_utils._generate_db_query(
             self,
@@ -1529,7 +1511,7 @@ class DataModel:
         gen_aggs=True,
         raise_multikey_warning: bool = True,
     ):
-        """Uses the provided spark_session to execute a query generated by the atscale query engine against the published project.
+        """Uses the provided spark_session to execute a query generated by the AtScale query engine against the published project.
         Returns the results in a spark DataFrame.
 
         Args:
@@ -1555,16 +1537,20 @@ class DataModel:
             use_aggs (bool, optional): Whether to allow the query to use aggs. Defaults to True.
             gen_aggs (bool, optional): Whether to allow the query to generate aggs. Defaults to True.
             raise_multikey_warning (str, optional): Whether to warn if a query contains attributes that have multiple key columns. Defaults to True.
+
         Returns:
             pyspark.sql.dataframe.DataFrame: A pyspark DataFrame containing the query results.
         """
-        inspection = getfullargspec(self.get_data_spark_from_spark)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        inspection = getfullargspec(self.get_data_spark)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         try:
             from pyspark.sql import SparkSession
         except ImportError as e:
             raise atscale_errors.AtScaleExtrasDependencyImportError("spark", str(e))
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         query = query_utils._generate_db_query(
             self,
@@ -1656,7 +1642,10 @@ class DataModel:
             str: The generated database query
         """
         inspection = getfullargspec(self.get_database_query)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         return query_utils._generate_db_query(
             data_model=self,
@@ -1710,7 +1699,10 @@ class DataModel:
             DataFrame: A pandas DataFrame containing the query results.
         """
         inspection = getfullargspec(self.submit_atscale_query)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
 
         queryResponse = self.project._atconn._post_atscale_query(
             query,
@@ -1739,7 +1731,7 @@ class DataModel:
         table_name: str = None,
         warehouse_id: str = None,
         publish: bool = True,
-        if_exists: PysparkTableExistsActionType = PysparkTableExistsActionType.ERROR,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     ):
         """Writes the pyspark dataframe to a table in the database accessed via jdbc with the given table_name. Joins that table to this
         DataModel by joining on the given join_features or join_columns.
@@ -1749,7 +1741,7 @@ class DataModel:
             pyspark_dataframe (pyspark.sql.dataframe.DataFrame): The pyspark dataframe to write
             jdbc_format (str): the driver class name. For example: 'jdbc', 'net.snowflake.spark.snowflake', 'com.databricks.spark.redshift'
             jdbc_options (Dict[str,str]): Case-insensitive to specify connection options for jdbc. The query option is dynamically generated by
-                atscale, as a result including a table or query parameter can cause issues.
+                AtScale, as a result including a table or query parameter can cause issues.
             join_features (list): a list of feature query names in the data model to use for joining.
             join_columns (list, optional): The columns in the dataframe to join to the join_features. List must be either
                 None or the same length and order as join_features. Defaults to None to use identical names to the
@@ -1760,19 +1752,18 @@ class DataModel:
             warehouse_id (str, optional): The warehouse the data model points at and to use for the writeback.
                 Defaults to None to use the warehouse used in the project already.
             publish (bool, optional): Whether the updated project should be published. Defaults to True.
-            if_exists (PysparkTableExistsActionType, optional): What to do if a table with table_name already exists. Defaults to PysparkTableExistsActionType.ERROR.
+            if_exists (enums.TableExistsAction, optional): What to do if a table with table_name already exists. Defaults to enums.TableExistsAction.ERROR.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.writeback_spark_jdbc)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        # import the needed spark packages
+        # import the needed spark packages. Since this is going through the spark dataframe to write, we don't need the jdbc dependencies
         try:
             from pyspark.sql import DataFrame
         except ImportError as e:
-            raise atscale_errors.AtScaleExtrasDependencyImportError("jdbc", str(e))
-
+            raise atscale_errors.AtScaleExtrasDependencyImportError("spark", str(e))
         project_dict = self.project._get_dict()
         validation_utils._validate_warehouse_connection(
             atconn=self.project._atconn, project_dict=project_dict, dbconn=dbconn
@@ -1810,13 +1801,12 @@ class DataModel:
         )
 
         # If we're replacing a table, then the columns may have changed and the data sets need to be updated.
-        if if_exists == PysparkTableExistsActionType.OVERWRITE:
-            database, schema = db_utils.get_database_and_schema(dbconn=dbconn)
+        if if_exists == enums.TableExistsAction.OVERWRITE:
             atscale_table_name = db_utils.get_atscale_tablename(
                 atconn=self.project._atconn,
                 warehouse_id=warehouse_id,
-                database=database,
-                schema=schema,
+                database=dbconn._database,
+                schema=dbconn._schema,
                 table_name=table_name,
             )
             self.project._update_project_tables(
@@ -1837,7 +1827,6 @@ class DataModel:
             dbconn=dbconn,
             table_name=table_name,
             expected_columns=pyspark_dataframe.columns,
-            include_dtype=True,
         )
 
         aliases = {c[0] for c in atscale_columns}
@@ -1846,7 +1835,7 @@ class DataModel:
             atscale_columns=aliases,
         )
 
-        # add_table now mutates the project_json and returns, then we're responsible for posting
+        # add_table now mutates the project_dict and returns, then we're responsible for posting
         project_dict = model_utils._create_dataset_relationship(
             atconn=self.project._atconn,
             project_dict=project_dict,
@@ -1861,7 +1850,7 @@ class DataModel:
             warehouse_id=warehouse_id,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def writeback_spark(
         self,
@@ -1874,7 +1863,7 @@ class DataModel:
         warehouse_id: str = None,
         database: str = None,
         publish: bool = True,
-        if_exists: PysparkTableExistsActionType = PysparkTableExistsActionType.ERROR,
+        if_exists: enums.TableExistsAction = enums.TableExistsAction.ERROR,
     ):
         """Writes the pyspark dataframe to a table in the database accessed via jdbc with the given table_name. Joins that table to this
         DataModel by joining on the given join_features or join_columns.
@@ -1893,12 +1882,12 @@ class DataModel:
                 data model points at. Defaults to None, to use the warehouse previously used in the data model.
             database (str, optional): The name of the database (first part of the three part name if applicable) for the table to be created in for the given PySpark DataFrame. Defaults to None.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
-            if_exists (PysparkTableExistsActionType, optional): What to do if a table with table_name already exists. Defaults to PysparkTableExistsActionType.ERROR.
+            if_exists (enums.TableExistsAction, optional): What to do if a table with table_name already exists. Defaults to enums.TableExistsAction.ERROR.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.writeback_spark)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         # import the needed spark packages
         try:
@@ -1936,7 +1925,7 @@ class DataModel:
         pyspark_dataframe.write.mode(if_exists.value).saveAsTable(table)
 
         # If we're replacing a table, then the columns may have changed and the data sets need to be updated.
-        if if_exists == PysparkTableExistsActionType.OVERWRITE:
+        if if_exists == enums.TableExistsAction.OVERWRITE:
             atscale_table_name = db_utils.get_atscale_tablename(
                 atconn=self.project._atconn,
                 warehouse_id=warehouse_id,
@@ -1963,7 +1952,6 @@ class DataModel:
             schema=schema,
             table_name=table_name,
             expected_columns=pyspark_dataframe.columns,
-            include_dtype=True,
         )
 
         aliases = {c[0] for c in atscale_columns}
@@ -1972,7 +1960,7 @@ class DataModel:
             atscale_columns=aliases,
         )
 
-        # add_table now mutates the project_json and returns, then we're responsible for posting
+        # add_table now mutates the project_dict and returns, then we're responsible for posting
         project_dict = model_utils._create_dataset_relationship(
             atconn=self.project._atconn,
             project_dict=project_dict,
@@ -1987,7 +1975,7 @@ class DataModel:
             warehouse_id=warehouse_id,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_secondary_attribute(
         self,
@@ -2019,34 +2007,32 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_secondary_attribute)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
 
         model_utils._check_conflicts(
-            data_model=self, to_add=new_feature_name, project_dict=project_json
+            data_model=self, to_add=new_feature_name, project_dict=project_dict
         )
 
         if not self.dataset_exists(dataset_name, include_unused=False):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with given model"
             )
 
-        if not model_utils._column_exists(project_json, dataset_name, column_name):
-            raise atscale_errors.UserError(
+        if not model_utils._column_exists(project_dict, dataset_name, column_name):
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{column_name}' not found in the '{dataset_name}' dataset"
             )
 
-        feature_utils._check_draft_hierarchy(
-            project_json, self.name, hierarchy_name, level_name, expect_base_input=True
-        )
+        feature_utils._check_hierarchy(self, hierarchy_name, level_name, expect_base_input=True)
 
-        data_set = project_parser.get_dataset(project_dict=project_json, dataset_name=dataset_name)
+        data_set = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
 
         # call the helper
         feature_utils._create_secondary_attribute(
             self.cube_id,
-            project_json,
+            project_dict,
             data_set,
             new_feature_name=new_feature_name,
             column_name=column_name,
@@ -2058,7 +2044,7 @@ class DataModel:
             visible=visible,
         )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def update_categorical_feature(
         self,
@@ -2080,14 +2066,14 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_categorical_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         features = data_model_helpers._get_draft_features(
             project_dict=project_dict,
             data_model_name=self.name,
-            feature_type=FeatureType.CATEGORICAL,
+            feature_type=enums.FeatureType.CATEGORICAL,
         )
 
         found = False
@@ -2096,14 +2082,14 @@ class DataModel:
                 found = True
                 break
             elif name == feature_name and name != info.get("base_name", name):
-                raise atscale_errors.UserError(
+                raise atscale_errors.WorkFlowError(
                     f"Feature: '{feature_name}' is roleplayed. Only the base feature can be updated and all roleplays will inherit the changes."
                 )
         if found == False:
-            raise atscale_errors.UserError(f"Feature: '{feature_name}' not found.")
+            raise atscale_errors.ObjectNotFoundError(f"Feature: '{feature_name}' not found.")
 
         if folder is not None and info.get("secondary_attribute", False) == False:
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"Folders can only be updated for secondary attributes. Feature: '{feature_name}' is a level, so it inherits the folder of its hierarchy."
             )
 
@@ -2116,7 +2102,7 @@ class DataModel:
             folder=folder,
         )
         if project_dict is not None:
-            self.project._update_project(project_json=project_dict, publish=publish)
+            self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_filter_attribute(
         self,
@@ -2146,7 +2132,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_filter_attribute)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
@@ -2154,9 +2140,7 @@ class DataModel:
             to_add=new_feature_name, data_model=self, project_dict=project_dict
         )
 
-        feature_utils._check_draft_hierarchy(
-            project_dict, self.name, hierarchy_name, level_name, expect_base_input=True
-        )
+        feature_utils._check_hierarchy(self, hierarchy_name, level_name, expect_base_input=True)
 
         feature_utils._create_filter_attribute(
             self,
@@ -2170,18 +2154,18 @@ class DataModel:
             folder=folder,
             visible=visible,
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_mapped_columns(
         self,
         dataset_name: str,
         column_name: str,
         mapped_names: List[str],
-        data_types: List[MappedColumnDataTypes],
-        key_terminator: MappedColumnKeyTerminator,
-        field_terminator: MappedColumnFieldTerminator,
-        map_key_type: MappedColumnDataTypes,
-        map_value_type: MappedColumnDataTypes,
+        data_types: List[enums.MappedColumnDataTypes],
+        key_terminator: enums.MappedColumnKeyTerminator,
+        field_terminator: enums.MappedColumnFieldTerminator,
+        map_key_type: enums.MappedColumnDataTypes,
+        map_value_type: enums.MappedColumnDataTypes,
         first_char_delimited: bool = False,
         publish: bool = True,
     ):
@@ -2193,35 +2177,33 @@ class DataModel:
             dataset_name (str): The dataset the mapped column will be derived in.
             column_name (str): The name of the column to map.
             mapped_names (list str): The names of the mapped columns.
-            data_types (list MappedColumnDataTypes): The types of the mapped columns.
-            key_terminator (MappedColumnKeyTerminator): The key terminator. Valid values are ':', '=', and '^'
-            field_terminator (MappedColumnFieldTerminator): The field terminator. Valid values are ',', ';', and '|'
-            map_key_type (MappedColumnDataTypes): The mapping key type for all the keys in the origin column.
-            map_value_type (MappedColumnDataTypes): The mapping value type for all values in the origin column.
+            data_types (list enums.MappedColumnDataTypes): The types of the mapped columns.
+            key_terminator (enums.MappedColumnKeyTerminator): The key terminator. Valid values are ':', '=', and '^'
+            field_terminator (enums.MappedColumnFieldTerminator): The field terminator. Valid values are ',', ';', and '|'
+            map_key_type (enums.MappedColumnDataTypes): The mapping key type for all the keys in the origin column.
+            map_value_type (enums.MappedColumnDataTypes): The mapping value type for all values in the origin column.
             first_char_delimited (bool): Whether the first character is delimited. Defaults to False.
             publish (bool): Whether the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_mapped_columns)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         dset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid parameter: dataset name '{dataset_name}' does not exist"
             )
         if project_utils._check_if_qds(dset):
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"Invalid parameter: dataset name '{dataset_name}' is a qds and cannot have "
-                f"calculated columns"
+                f"mapped columns"
             )
 
-        dset["physical"].setdefault("columns", [])
-        dset_columns = [c["name"] for c in dset["physical"]["columns"]]
-
+        dset_columns = [c["name"] for c in dset["physical"].setdefault("columns", [])]
         model_utils._check_features(
             features=[column_name],
             check_list=dset_columns,
@@ -2241,14 +2223,14 @@ class DataModel:
             first_char_delimited=first_char_delimited,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def add_column_mapping(
         self,
         dataset_name: str,
         column_name: str,
         mapped_name: str,
-        data_type: MappedColumnDataTypes,
+        data_type: enums.MappedColumnDataTypes,
         publish: bool = True,
     ):
         """Adds a new mapping to an existing column mapping
@@ -2256,37 +2238,37 @@ class DataModel:
         Args:
             dataset_name (str): The dataset the mapping belongs to.
             column_name (str): The column the mapping belongs to.
-            mapped_name (MappedColumnDataTypes): The name for the new mapped column.
+            mapped_name (enums.MappedColumnDataTypes): The name for the new mapped column.
             data_type (str): The data type of the new mapped column.
             publish (bool, optional): _description_. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.add_column_mapping)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         if not self.dataset_exists(dataset_name, include_unused=True):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"No dataset with the name {dataset_name} found in project"
             )
 
         if not model_utils._column_exists(project_dict, dataset_name, column_name):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{column_name}' not found in the '{dataset_name}' dataset"
             )
 
         dset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
 
         if "map-column" not in dset["physical"]:
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"No mapped column exists in the dataset. Use create_mapped_columns to create one"
             )
 
         mapping_cols = [c for c in dset["physical"]["map-column"] if c["name"] == column_name]
         if len(mapping_cols) < 1:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"No mapped column exists for column: {mapped_name}. Use create_mapped_columns "
                 f"to create one"
             )
@@ -2295,7 +2277,7 @@ class DataModel:
             col for col in mapping_cols[0]["columns"]["columns"] if col["name"] == mapped_name
         ]
         if already_mapped_w_name:
-            raise atscale_errors.UserError(
+            raise atscale_errors.CollisionError(
                 f"There is already a mapping on column '{column_name}' for the key '{mapped_name}'"
             )
 
@@ -2303,7 +2285,7 @@ class DataModel:
             dataset=dset, column_name=column_name, mapped_name=mapped_name, data_type=data_type
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_calculated_column(
         self,
@@ -2321,31 +2303,28 @@ class DataModel:
             column_name (str): The name of the column.
             expression (str): The SQL expression for the column.
             publish (bool): Whether the updated project should be published. Defaults to True.
-
-        Raises:
-            atscale_errors.UserError: If the given dataset or column does not exist in the data model
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_calculated_column)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         dset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid parameter: dataset name '{dataset_name}' does not exist"
             )
         if model_utils._column_exists(
             project_dict=project_dict, dataset_name=dataset_name, column_name=column_name
         ):
-            raise atscale_errors.UserError(
+            raise atscale_errors.CollisionError(
                 f"Invalid parameter: column_name '{column_name}' already exists in the given "
                 f"dataset"
             )
         if project_utils._check_if_qds(dset):
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"Invalid parameter: dataset name '{dataset_name}' is a qds and cannot have "
                 f"calculated columns"
             )
@@ -2356,7 +2335,7 @@ class DataModel:
             column_name=column_name,
             expression=expression,
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def update_calculated_column(
         self,
@@ -2372,31 +2351,28 @@ class DataModel:
             column_name (str): The name of the column.
             expression (str): The new SQL expression for the column.
             publish (bool): Whether the updated project should be published. Defaults to True.
-
-        Raises:
-            atscale_errors.UserError: If the given dataset or column does not exist in the data model
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_calculated_column)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
         dset = project_parser.get_dataset(project_dict=project_dict, dataset_name=dataset_name)
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid parameter: dataset name '{dataset_name}' does not exist"
             )
         if project_utils._check_if_qds(dset):
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 f"Invalid parameter: dataset name '{dataset_name}' is a qds and cannot have "
                 f"calculated columns"
             )
         if not model_utils._column_exists(
             project_dict=project_dict, dataset_name=dataset_name, column_name=column_name
         ):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid parameter: column_name '{column_name}' does not exist in the given "
                 f"dataset"
             )
@@ -2413,21 +2389,22 @@ class DataModel:
             expression=expression,
             column_id=column["id"],
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
-    def validate_mdx(self, expression: str) -> str:
+    def validate_mdx(self, expression: str) -> bool:
         """Verifies if the given MDX Expression is valid for the current data model.
 
         Args:
             expression (str): The MDX expression for the feature.
+
         Returns:
-            str: The validation response.
+            bool: Returns True if mdx is valid.
         """
         response = model_utils._validate_mdx_syntax(self.project._atconn, expression, raises=False)
         if response == "":
-            return "MDX syntax is valid"
+            return True
         else:
-            return response
+            return False
 
     def create_calculated_feature(
         self,
@@ -2436,7 +2413,7 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ):
@@ -2448,24 +2425,24 @@ class DataModel:
             description (str): The description for the feature. Defaults to None.
             caption (str): The caption for the feature. Defaults to None to use the new_feature_name.
             folder (str): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str]): The format string for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str]): The format string for the feature. Defaults to None.
             visible (bool): Whether the feature will be visible to BI tools. Defaults to True.
             publish (bool): Whether the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_calculated_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
         model_utils._check_conflicts(
-            to_add=new_feature_name, data_model=self, project_dict=project_json
+            to_add=new_feature_name, data_model=self, project_dict=project_dict
         )
 
         model_utils._validate_mdx_syntax(self.project._atconn, expression)
 
         feature_utils._create_calculated_feature(
-            project_dict=project_json,
+            project_dict=project_dict,
             cube_id=self.cube_id,
             name=new_feature_name,
             expression=expression,
@@ -2476,7 +2453,7 @@ class DataModel:
             visible=visible,
         )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def update_calculated_feature(
         self,
@@ -2485,7 +2462,7 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = None,
         publish: bool = True,
     ):
@@ -2497,14 +2474,14 @@ class DataModel:
             description (str): The new description for the feature. Defaults to None to leave unchanged.
             caption (str): The new caption for the feature. Defaults to None to leave unchanged.
             folder (str): The new folder to put the feature in. Defaults to None to leave unchanged.
-            format_string (Union[FeatureFormattingType, str]): The new format string for the feature. Defaults to None to leave unchanged.
+            format_string (Union[enums.FeatureFormattingType, str]): The new format string for the feature. Defaults to None to leave unchanged.
             visible (bool): Whether the updated feature should be visible. Defaults to None to leave unchanged.
             publish (bool): Whether the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_calculated_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         calculated_measures = data_model_helpers._parse_calculated_features(
@@ -2512,7 +2489,7 @@ class DataModel:
         )
 
         if feature_name not in calculated_measures:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid name: '{feature_name}'. A calculated measure with that name does not exist"
             )
 
@@ -2529,7 +2506,7 @@ class DataModel:
             format_string=format_string,
             visible=visible,
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_denormalized_categorical_feature(
         self,
@@ -2557,7 +2534,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_denormalized_categorical_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         model_utils._check_conflicts(
@@ -2567,12 +2544,12 @@ class DataModel:
         if not model_utils._get_fact_dataset(
             data_model_dict, project_dict, dataset_name=fact_dataset_name
         ):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Fact Dataset '{fact_dataset_name}' not associated with given model"
             )
 
         if not model_utils._column_exists(project_dict, fact_dataset_name, column_name):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{column_name}' not found in the '{fact_dataset_name}' dataset"
             )
 
@@ -2591,18 +2568,18 @@ class DataModel:
             folder=folder,
             visible=visible,
         )
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_aggregate_feature(
         self,
         fact_dataset_name: str,
         column_name: str,
         new_feature_name: str,
-        aggregation_type: Aggs,
+        aggregation_type: enums.Aggs,
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ):
@@ -2612,19 +2589,19 @@ class DataModel:
             fact_dataset_name (str): The fact dataset containing the column that the feature will use.
             column_name (str): The column that the feature will use.
             new_feature_name (str): The query name of the new feature.
-            aggregation_type (atscale.utils.enums.Aggs): What aggregation method to use for the feature. Example: Aggs.MAX
-                Valid options can be found in utils.Aggs
+            aggregation_type (atscale.utils.enums.enums.Aggs): What aggregation method to use for the feature. Example: enums.Aggs.MAX
+                Valid options can be found in utils.enums.Aggs
             description (str): The description for the feature. Defaults to None.
             caption (str): The caption for the feature. Defaults to None.
             folder (str): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str]): The format string for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str]): The format string for the feature. Defaults to None.
             visible (bool, optional): Whether the feature will be visible to BI tools. Defaults to True.
             publish (bool): Whether the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_aggregate_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         model_utils._check_conflicts(
@@ -2636,12 +2613,12 @@ class DataModel:
             data_model_dict, project_dict, dataset_name=fact_dataset_name
         )
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Fact Dataset '{fact_dataset_name}' not associated with given model"
             )
 
         if not model_utils._column_exists(project_dict, fact_dataset_name, column_name):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{column_name}' not found in the '{fact_dataset_name}' dataset"
             )
         dataset_id = dset["id"]
@@ -2660,7 +2637,7 @@ class DataModel:
             visible=visible,
         )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def update_aggregate_feature(
         self,
@@ -2668,7 +2645,7 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = None,
         publish: bool = True,
     ):
@@ -2679,30 +2656,27 @@ class DataModel:
             description (str): The new description for the feature. Defaults to None to leave unchanged.
             caption (str): The new caption for the feature. Defaults to None to leave unchanged.
             folder (str): The new folder to put the feature in. Defaults to None to leave unchanged.
-            format_string (Union[FeatureFormattingType, str]): The new format string for the feature. Defaults to None to leave unchanged.
+            format_string (Union[enums.FeatureFormattingType, str]): The new format string for the feature. Defaults to None to leave unchanged.
             visible (bool, optional): Whether the feature will be visible to BI tools. Defaults to None to leave unchanged.
             publish (bool): Whether the updated project should be published. Defaults to True.
-
-        Raises:
-            atscale_error.UserError: If the given name does not exist in the data model.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_aggregate_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
         agg_features = data_model_helpers._parse_aggregate_features(
-            data_model_name=self.name, project_dict=project_json
+            data_model_name=self.name, project_dict=project_dict
         )
 
         if feature_name not in agg_features:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Invalid name: '{feature_name}'. A feature with that name does not exist"
             )
 
         feature_utils._update_aggregate_feature(
-            project_dict=project_json,
+            project_dict=project_dict,
             cube_id=self.cube_id,
             feature_name=feature_name,
             description=description,
@@ -2712,7 +2686,7 @@ class DataModel:
             visible=visible,
         )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_rolling_features(
         self,
@@ -2721,15 +2695,15 @@ class DataModel:
         hierarchy_name: str,
         level_name: str,
         time_length: int,
-        aggregation_types: List[MDXAggs] = None,
+        aggregation_types: List[enums.MDXAggs] = None,
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ) -> List[str]:
-        """Creates a rolling calculated numeric feature for the given column. If no list of MDXAggs is provided, rolling calc features
+        """Creates a rolling calculated numeric feature for the given column. If no list of enums.MDXAggs is provided, rolling calc features
             will be made for Sum, Mean, Min, Max, and Stdev
 
         Args:
@@ -2739,12 +2713,12 @@ class DataModel:
             hierarchy_name (str): The query name of the time hierarchy used in the calculation
             level_name (str): The query name of the level within the time hierarchy
             time_length (int): The length of time the feature should be calculated over
-            aggregation_types (List[MDXAggs], optional): The type of aggregation to do for the rolling calc. If none, all agg
+            aggregation_types (List[enums.MDXAggs], optional): The type of aggregation to do for the rolling calc. If none, all agg
                 types are used.
             description (str, optional): The description for the feature. Defaults to None.
             caption (str, optional): The caption for the feature. Defaults to None.
             folder (str, optional): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str], optional): The format string for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str], optional): The format string for the feature. Defaults to None.
             visible (bool, optional): Whether the feature will be visible to BI tools. Defaults to True.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.)
 
@@ -2754,7 +2728,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_rolling_features)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if not (type(time_length) == int) or time_length < 1:
             raise ValueError(
@@ -2763,39 +2737,40 @@ class DataModel:
 
         proj_dict = self.project._get_dict()
 
+        all_features_info = data_model_helpers._get_draft_features(
+            proj_dict, data_model_name=self.name
+        )
+        # Check to see that features passed are numeric
+        numeric_features_info = dictionary_parser.filter_dict(
+            to_filter=all_features_info,
+            val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
+        )
+
         # Check to see that features passed exist in first place
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=proj_dict,
-                data_model_name=self.name,
-                feature_type=FeatureType.ALL,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+            check_list=all_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
         )
 
         # Check to see that features passed are numeric
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=proj_dict,
-                data_model_name=self.name,
-                feature_type=FeatureType.NUMERIC,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            check_list=numeric_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
         )
 
         # make sure the input is a list
         if aggregation_types is None:
-            aggregation_types = [x for x in MDXAggs]
+            aggregation_types = [x for x in enums.MDXAggs]
 
         if type(aggregation_types) != list:
             aggregation_types = [aggregation_types]
 
         # validate that the columns we are about to make don't already exist.
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
         measure_list = data_model_helpers._get_draft_features(
-            project_dict=project_json, data_model_name=self.name
+            project_dict=project_dict, data_model_name=self.name
         )
         if len(aggregation_types) > 1:
             new_feature_names = [new_feature_name + "_" + x.name for x in aggregation_types]
@@ -2813,14 +2788,14 @@ class DataModel:
             data_model=self, hierarchy_name=hierarchy_name, level_name=level_name
         )
 
-        time_dimension = hier_dict[hierarchy_name][Hierarchy.dimension.name]
+        time_dimension = hier_dict["dimension"]
 
         for i in range(len(aggregation_types)):
             aggregation_type = aggregation_types[i]
             feat_name = new_feature_names[i]
 
             feature_utils._create_rolling_agg(
-                project_json,
+                project_dict,
                 cube_id=self.cube_id,
                 time_dimension=time_dimension,
                 agg_type=aggregation_type,
@@ -2836,7 +2811,7 @@ class DataModel:
                 visible=visible,
             )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
         new_feature_names_string = ", ".join(new_feature_names)
 
@@ -2856,7 +2831,7 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ):
@@ -2871,43 +2846,38 @@ class DataModel:
             description (str, optional): A description for the feature. Defaults to None.
             caption (str, optional): A caption for the feature. Defaults to None.
             folder (str, optional): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str], optional): A format sting for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str], optional): A format sting for the feature. Defaults to None.
             visible (bool, optional): Whether the feature should be visible. Defaults to True.
             publish (bool, optional): Whether to publish the project after creating the feature. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_lag_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
         existing_features = data_model_helpers._get_draft_features(
-            project_dict=project_json, data_model_name=self.name
+            project_dict=project_dict, data_model_name=self.name
+        )
+        numeric_features_info = dictionary_parser.filter_dict(
+            to_filter=existing_features,
+            val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
         )
 
         features = [numeric_feature_name]
-        check_list = data_model_helpers._get_draft_features(
-            feature_type=FeatureType.NUMERIC,
-            project_dict=project_json,
-            data_model_name=self.name,
-        )
 
         # Check to see that features passed exist in first place
         model_utils._check_features(
             features=features,
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=project_json,
-                data_model_name=self.name,
-                feature_type=FeatureType.ALL,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+            check_list=existing_features.keys(),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
         )
 
         # Check to see that features passed are numeric
         model_utils._check_features(
             features=features,
-            check_list=check_list,
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            check_list=numeric_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
         )
 
         model_utils._check_conflicts(to_add=new_feature_name, preexisting=existing_features)
@@ -2923,12 +2893,12 @@ class DataModel:
             level_name=level_name,
         )
 
-        time_dimension = hier_dict[hierarchy_name][Hierarchy.dimension.name]
+        time_dimension = hier_dict["dimension"]
 
         # the project dict that will be edited by the operation
 
         feature_utils._create_lag_feature(
-            project_dict=project_json,
+            project_dict=project_dict,
             cube_id=self.cube_id,
             time_dimension=time_dimension,
             new_feature_name=new_feature_name,
@@ -2942,7 +2912,7 @@ class DataModel:
             format_string=format_string,
             visible=visible,
         )
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_time_differencing_feature(
         self,
@@ -2954,7 +2924,7 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[str, FeatureFormattingType] = None,
+        format_string: Union[str, enums.FeatureFormattingType] = None,
         visible: bool = True,
         publish: bool = True,
     ):
@@ -2971,25 +2941,25 @@ class DataModel:
             description (str): The description for the feature. Defaults to None.
             caption (str): The caption for the feature. Defaults to None.
             folder (str): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str]): The format string for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str]): The format string for the feature. Defaults to None.
             visible (bool, optional): Whether the feature should be visible. Defaults to True.
             publish (bool): Whether the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_time_differencing_feature)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        project_dict = self.project._get_dict()
 
         existing_features = data_model_helpers._get_draft_features(
-            project_dict=project_json, data_model_name=self.name
+            project_dict=project_dict, data_model_name=self.name
         )
 
         existing_measures = list(
             dictionary_parser.filter_dict(
                 to_filter=existing_features,
-                val_filters=[lambda i: i["feature_type"] == FeatureType.NUMERIC.name_val],
+                val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
             ).keys()
         )
 
@@ -2997,14 +2967,14 @@ class DataModel:
         model_utils._check_features(
             features=[numeric_feature_name],
             check_list=existing_features,
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
         )
 
         # Check to see that features passed are numeric
         model_utils._check_features(
             features=[numeric_feature_name],
             check_list=existing_measures,
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
         )
 
         if not (type(time_length) == int) or time_length < 1:
@@ -3017,10 +2987,10 @@ class DataModel:
             data_model=self, hierarchy_name=hierarchy_name, level_name=level_name
         )
 
-        time_dimension = hier_dict[hierarchy_name][Hierarchy.dimension.name]
+        time_dimension = hier_dict["dimension"]
 
         feature_utils._create_time_differencing_feature(
-            project_dict=project_json,
+            project_dict=project_dict,
             cube_id=self.cube_id,
             time_dimension=time_dimension,
             new_feature_name=new_feature_name,
@@ -3035,7 +3005,7 @@ class DataModel:
             visible=visible,
         )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_percentage_features(
         self,
@@ -3046,12 +3016,12 @@ class DataModel:
         description: str = None,
         caption: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ):
         """Creates a set of features calculating the percentage of the given numeric_feature's value compared to each non-leaf
-        (i.e. non-base) level in the hierarchy
+        (i.e. non-base) level in the hierarchy. Works off of the published project.
 
         Args:
             numeric_feature_name (str): The query name of the numeric feature to use for the calculation
@@ -3063,52 +3033,48 @@ class DataModel:
             description (str, optional): The description for the feature. Defaults to None.
             caption (str, optional): The caption for the new features. Defaults to None.
             folder (str, optional): The folder to put the new features in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str], optional): The format string for the features. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str], optional): The format string for the features. Defaults to None.
             visible (bool, optional): Whether the feature will be visible to BI tools. Defaults to True.
             publish (bool, optional): Whether or not the updated project should be published. Defaults to True.
         """
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_percentage_features)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        project_helpers._check_published(self.project)
 
         hier_dict, _ = feature_utils._check_time_hierarchy(
             data_model=self, hierarchy_name=hierarchy_name
         )
 
-        dimension_name = hier_dict[hierarchy_name][Hierarchy.dimension.name]
+        dimension_name = hier_dict["dimension"]
         project_dict = self.project._get_dict()
-        measure_list = data_model_helpers._get_draft_features(
-            project_dict=project_dict, data_model_name=self.name, feature_type=FeatureType.NUMERIC
-        )
+        existing_features = data_model_helpers._get_published_features(data_model=self)
         level_list = list(
-            get_dmv_data(
+            dmv_utils.get_dmv_data(
                 model=self,
-                fields=[Level.name, Level.hierarchy],
-                filter_by={Level.hierarchy: [hierarchy_name]},
+                fields=[enums.Level.name, enums.Level.hierarchy],
+                filter_by={enums.Level.hierarchy: [hierarchy_name]},
             ).keys()
         )
 
         # Check to see that features passed exist in first place
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=project_dict,
-                data_model_name=self.name,
-                feature_type=FeatureType.ALL,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+            check_list=existing_features.keys(),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
         )
 
         # Check to see that features passed are numeric
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=project_dict,
-                data_model_name=self.name,
-                feature_type=FeatureType.NUMERIC,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            check_list=[
+                feature
+                for feature, info in existing_features.items()
+                if info["feature_type"] == enums.FeatureType.NUMERIC.name_val
+            ],
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=True),
         )
 
         # some error checking on the levels
@@ -3117,28 +3083,24 @@ class DataModel:
                 level_names = [level_names]
             missing_levels = [x for x in level_names if x not in level_list]
             if missing_levels:
-                raise atscale_errors.UserError(
+                raise atscale_errors.ObjectNotFoundError(
                     f'Level name{"s" if len(missing_levels) > 1 else ""}: {", ".join(missing_levels)} not found '
                     f"in Hierarchy: {hierarchy_name}"
                 )
             elif level_list[-1] in level_names:
-                raise atscale_errors.UserError(
+                raise atscale_errors.WorkFlowError(
                     f"Cannot create percentage for leaf node of hierarchy: {level_list[-1]}"
                 )
         else:
             level_names = level_list[:-1]
 
         if (new_feature_names is not None) and (len(new_feature_names) != len(level_names)):
-            raise atscale_errors.UserError(
-                f"Length of new_feature_names must equal length of level_names"
-            )
+            raise ValueError(f"Length of new_feature_names must equal length of level_names")
 
         if not new_feature_names:
             new_feature_names = [numeric_feature_name + "% of " + level for level in level_names]
 
-        model_utils._check_conflicts(
-            data_model=self, to_add=new_feature_names, project_dict=project_dict
-        )
+        model_utils._check_conflicts(to_add=new_feature_names, preexisting=existing_features)
 
         for lev_index, level in enumerate(level_names):
             name = new_feature_names[lev_index]
@@ -3157,7 +3119,7 @@ class DataModel:
                 visible=visible,
             )
 
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def create_period_to_date_features(
         self,
@@ -3167,11 +3129,11 @@ class DataModel:
         level_names: List[str] = None,
         description: str = None,
         folder: str = None,
-        format_string: Union[FeatureFormattingType, str] = None,
+        format_string: Union[enums.FeatureFormattingType, str] = None,
         visible: bool = True,
         publish: bool = True,
     ) -> str:
-        """Creates a period-to-date calculation
+        """Creates a period-to-date calculation off of the published project.
 
         Args:
             numeric_feature_name (str): The query name of the numeric feature to use for the calculation
@@ -3182,7 +3144,7 @@ class DataModel:
                 names. If not None it must be same length and order as level_names. Defaults to None.
             description (str, optional): The description for the feature. Defaults to None.
             folder (str, optional): The folder to put the feature in. Defaults to None.
-            format_string (Union[FeatureFormattingType, str], optional): The format string for the feature. Defaults to None.
+            format_string (Union[enums.FeatureFormattingType, str], optional): The format string for the feature. Defaults to None.
             visible (bool, optional): Whether the feature will be visible to BI tools. Defaults to True.
             publish (bool, optional): Whether the updated project should be published. Defaults to True.
 
@@ -3192,41 +3154,44 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_period_to_date_features)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        project_json = self.project._get_dict()
+        # check that we are using a published project
+        project_helpers._check_published(self.project)
+
+        project_dict = self.project._get_dict()
         hier_dict, _ = feature_utils._check_time_hierarchy(
             data_model=self, hierarchy_name=hierarchy_name
         )
-        time_dimension = hier_dict[hierarchy_name][Hierarchy.dimension.name]
+        time_dimension = hier_dict["dimension"]
 
         level_list = list(
-            get_dmv_data(
+            dmv_utils.get_dmv_data(
                 model=self,
-                fields=[Level.name, Level.hierarchy],
-                filter_by={Level.hierarchy: [hierarchy_name]},
+                fields=[enums.Level.name, enums.Level.hierarchy],
+                filter_by={enums.Level.hierarchy: [hierarchy_name]},
             ).keys()
         )
-        measure_list = data_model_helpers._get_draft_features(
-            project_dict=project_json, data_model_name=self.name, feature_type=FeatureType.NUMERIC
+
+        all_features_info = data_model_helpers._get_published_features(data_model=self)
+        # Check to see that features passed are numeric
+        numeric_features_info = dictionary_parser.filter_dict(
+            to_filter=all_features_info,
+            val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
         )
 
         # Check to see that features passed exist in first place
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=data_model_helpers._get_draft_features(
-                project_dict=project_json,
-                data_model_name=self.name,
-                feature_type=FeatureType.ALL,
-            ).keys(),
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False),
+            check_list=all_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
         )
 
         # Check to see that features passed are numeric
         model_utils._check_features(
             features=[numeric_feature_name],
-            check_list=measure_list,
-            errmsg=CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            check_list=numeric_features_info,
+            errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=True),
         )
 
         # some error checking on the levels
@@ -3235,21 +3200,19 @@ class DataModel:
                 level_names = [level_names]
             missing_levels = [x for x in level_names if x not in level_list]
             if missing_levels:
-                raise atscale_errors.UserError(
+                raise atscale_errors.ObjectNotFoundError(
                     f'Level name{"s" if len(missing_levels) > 1 else ""}: {missing_levels} not found '
                     f"in Hierarchy: {hierarchy_name}"
                 )
             elif level_list[-1] in level_names:
-                raise atscale_errors.UserError(
-                    f"Cannot create period for leaf node of hierarchy: {level_list[-1]}"
+                raise atscale_errors.WorkFlowError(
+                    f"Cannot create period to date for leaf node of hierarchy: {level_list[-1]}"
                 )
         else:
             level_names = level_list[:-1]
 
         if (new_feature_names is not None) and (len(new_feature_names) != len(level_names)):
-            raise atscale_errors.UserError(
-                f"Length of new_feature_names must equal length of level_names"
-            )
+            raise ValueError(f"Length of new_feature_names must equal length of level_names")
 
         base_level = level_list[-1]
         if not new_feature_names:
@@ -3258,13 +3221,13 @@ class DataModel:
             ]
 
         model_utils._check_conflicts(
-            data_model=self, to_add=new_feature_names, project_dict=project_json
+            data_model=self, to_add=new_feature_names, project_dict=project_dict
         )
 
         for lev_index, level in enumerate(level_names):
             name = new_feature_names[lev_index]
             feature_utils._create_period_to_date_feature(
-                project_dict=project_json,
+                project_dict=project_dict,
                 cube_id=self.cube_id,
                 new_feature_name=name,
                 numeric_feature_name=numeric_feature_name,
@@ -3278,17 +3241,32 @@ class DataModel:
                 visible=visible,
             )
 
-        self.project._update_project(project_json=project_json, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
-    def get_dimensions(self) -> Dict:
+    def get_dimensions(self, use_published: bool = True) -> Dict:
         """Gets a dictionary of dictionaries with the published dimension names and metadata.
 
+        Args:
+            use_published (bool, optional): whether to get the dimensions of the published or draft data model.
+                    Defaults to True to use the published version.
+
         Returns:
-            dict: A dictionary of dictionaries where the dimension names are the keys in the outer dictionary
+            Dict: A dictionary of dictionaries where the dimension names are the keys in the outer dictionary
                 while the inner keys are the following: 'description', 'type'(value is Time or Standard).
         """
-        filter_by = {}
-        return metadata_utils._get_dimensions(self, filter_by=filter_by)
+        if use_published:
+            project_helpers._check_published(self.project)
+            filter_by = {}
+            ret_dict = metadata_utils._get_dimensions(self, filter_by=filter_by)
+        else:
+            model_utils._perspective_check(
+                self, "Getting draft dimensions is not supported for perspectives."
+            )
+            ret_dict = data_model_helpers._get_draft_dimensions(
+                self.project._get_dict(), self.cube_id
+            )
+        ret_dict = dict(sorted(ret_dict.items(), key=lambda x: x[0].upper()))
+        return ret_dict
 
     def create_dimension(
         self,
@@ -3303,7 +3281,7 @@ class DataModel:
         hierarchy_caption: str = None,
         hierarchy_description: str = "",
         hierarchy_folder: str = "",
-        level_type: TimeSteps = TimeSteps.Regular,
+        level_type: enums.TimeSteps = enums.TimeSteps.Regular,
         level_caption: str = None,
         level_description: str = "",
         publish: bool = True,
@@ -3322,7 +3300,7 @@ class DataModel:
             hierarchy_caption (str, optional): The caption for the heirarchy Defaults to None to use new_hierarchy_name.
             hierarchy_description (str, optional): The description for the hierarchy. Defaults to "".
             hierarchy_folder (str, optional): The folder for the hierarchy. Defaults to "".
-            level_type (TimeSteps, optional): The TimeSteps for the level if time based. Defaults to TimeSteps.Regular.
+            level_type (enums.TimeSteps, optional): The enums.TimeSteps for the level if time based. Defaults to enums.TimeSteps.Regular.
             level_caption (str, optional): The caption for the level. Defaults to None to use new_level_name.
             level_description (str, optional): The description for the level. Defaults to "".
             publish (bool, optional): Whether the updated project should be published. Defaults to True.
@@ -3330,7 +3308,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_dimension)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube = project_parser.get_cube(project_dict=project_dict, id=self.cube_id)
@@ -3339,12 +3317,12 @@ class DataModel:
             "dimensions", {}
         ).get("dimension", []):
             if dimension["name"] == new_dimension_name:
-                raise atscale_errors.UserError(
+                raise atscale_errors.CollisionError(
                     f"A dimension named '{new_dimension_name}' already exists in the given model"
                 )
             for hierarchy in dimension.get("hierarchy", []):
                 if hierarchy.get("name") == new_hierarchy_name:
-                    raise atscale_errors.UserError(
+                    raise atscale_errors.CollisionError(
                         f"A hierarchy named '{new_hierarchy_name}' already exists in the given model"
                     )
 
@@ -3355,34 +3333,34 @@ class DataModel:
         dset = project_parser.get_dataset(project_dict, dataset_name=dataset_name)
 
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with the project"
             )
 
         if not self.dataset_exists(dataset_name, include_unused=False):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with given model"
             )
 
         if not model_utils._column_exists(project_dict, dataset_name, level_value_column):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{level_value_column}' not found in the '{dataset_name}' dataset"
             )
         if level_key_columns:
             for column in level_key_columns:
                 if not model_utils._column_exists(project_dict, dataset_name, column):
-                    raise atscale_errors.UserError(
+                    raise atscale_errors.ObjectNotFoundError(
                         f"Column '{column}' not found in the '{dataset_name}' dataset"
                     )
         if time_dimension:
-            if level_type == TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type cannot be TimeSteps.Regular for time dimensions"
+            if level_type == enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type cannot be enums.TimeSteps.Regular for time dimensions"
                 )
         else:
-            if level_type != TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type must be TimeSteps.Regular for non time dimensions"
+            if level_type != enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type must be enums.TimeSteps.Regular for non time dimensions"
                 )
 
         dimension_utils.create_dimension(
@@ -3427,7 +3405,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_dimension)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube = project_parser.get_cube(project_dict=project_dict, id=self.cube_id)
@@ -3441,7 +3419,7 @@ class DataModel:
             if description is not None:
                 dim["properties"]["description"] = description
         else:
-            raise ValueError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"No dimension {dimension_name} found make sure you are using non roleplayed names."
             )
         self.project._update_project(project_dict, publish)
@@ -3457,7 +3435,7 @@ class DataModel:
         hierarchy_caption: str = None,
         hierarchy_description: str = "",
         hierarchy_folder: str = "",
-        level_type: TimeSteps = TimeSteps.Regular,
+        level_type: enums.TimeSteps = enums.TimeSteps.Regular,
         level_caption: str = None,
         level_description: str = "",
         publish: bool = True,
@@ -3474,7 +3452,7 @@ class DataModel:
             hierarchy_caption (str, optional): The caption for the heirarchy Defaults to None to use new_hierarchy_name.
             hierarchy_description (str, optional): The description for the hierarchy. Defaults to "".
             hierarchy_folder (str, optional): The folder for the hierarchy. Defaults to "".
-            level_type (TimeSteps, optional): The TimeSteps for the level if time based. Defaults to TimeSteps.Regular.
+            level_type (enums.TimeSteps, optional): The enums.TimeSteps for the level if time based. Defaults to enums.TimeSteps.Regular.
             level_caption (str, optional): The caption for the level. Defaults to None to use new_level_name.
             level_description (str, optional): The description for the level. Defaults to "".
             publish (bool, optional): Whether the updated project should be published. Defaults to True.
@@ -3482,7 +3460,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.create_hierarchy)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube = project_parser.get_cube(project_dict=project_dict, id=self.cube_id)
@@ -3494,23 +3472,23 @@ class DataModel:
         dset = project_parser.get_dataset(project_dict, dataset_name=dataset_name)
 
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with the project"
             )
 
         if not self.dataset_exists(dataset_name, include_unused=False):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with given model"
             )
 
         if not model_utils._column_exists(project_dict, dataset_name, level_value_column):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{level_value_column}' not found in the '{dataset_name}' dataset"
             )
         if level_key_columns:
             for column in level_key_columns:
                 if not model_utils._column_exists(project_dict, dataset_name, column):
-                    raise atscale_errors.UserError(
+                    raise atscale_errors.ObjectNotFoundError(
                         f"Column '{column}' not found in the '{dataset_name}' dataset"
                     )
         dimension_found = False
@@ -3522,24 +3500,24 @@ class DataModel:
                 dimension_type = dimension["properties"].get("dimension-type", "non-time")
             for hierarchy in dimension.get("hierarchy", []):
                 if hierarchy.get("name") == new_hierarchy_name:
-                    raise atscale_errors.UserError(
+                    raise atscale_errors.CollisionError(
                         f"A hierarchy named '{new_hierarchy_name}' already exists in the given model"
                     )
 
         if not dimension_found:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dimension: '{dimension_name}' not found. Make sure you are not using roleplayed names."
             )
 
         if dimension_type == "Time":
-            if level_type == TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type cannot be TimeSteps.Regular for time dimensions"
+            if level_type == enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type cannot be enums.TimeSteps.Regular for time dimensions"
                 )
         else:
-            if level_type != TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type must be TimeSteps.Regular for non time dimensions"
+            if level_type != enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type must be enums.TimeSteps.Regular for non time dimensions"
                 )
 
         project_dict = self.project._get_dict()
@@ -3589,7 +3567,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.update_hierarchy)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube = project_parser.get_cube(project_dict=project_dict, id=self.cube_id)
@@ -3618,7 +3596,7 @@ class DataModel:
                             }
                     break
         if not hierarchy_found:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Hierarchy: '{hierarchy_name}' not found, make sure you are using non roleplayed names."
             )
 
@@ -3633,7 +3611,7 @@ class DataModel:
         existing_level: str,
         key_columns: List[str] = None,
         add_above_existing: bool = True,
-        level_type: TimeSteps = TimeSteps.Regular,
+        level_type: enums.TimeSteps = enums.TimeSteps.Regular,
         caption: str = None,
         description: str = "",
         publish: bool = True,
@@ -3648,7 +3626,7 @@ class DataModel:
             existing_level (str): The existing level to insert the new one at.
             key_columns (List[str], optional):  The key columns in the dataset to use for the level. Defaults to None to use the value column.
             add_above_existing (bool, optional): Whether the new level should be inserted above the existing one. Defaults to True.
-            level_type (TimeSteps, optional): The TimeSteps for the level if time based. Defaults to TimeSteps.Regular.
+            level_type (enums.TimeSteps, optional): The enums.TimeSteps for the level if time based. Defaults to enums.TimeSteps.Regular.
             caption (str, optional): The caption for the level. Defaults to None to use new_level_name.
             description (str, optional): The description for the level. Defaults to "".
             publish (bool, optional): Whether the updated project should be published. Defaults to True.
@@ -3656,7 +3634,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.add_level_to_hierarchy)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
 
@@ -3667,30 +3645,30 @@ class DataModel:
         dset = project_parser.get_dataset(project_dict, dataset_name=dataset_name)
 
         if not dset:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with the project"
             )
 
         if not self.dataset_exists(dataset_name, include_unused=False):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Dataset '{dataset_name}' not associated with given model"
             )
 
         if not model_utils._column_exists(project_dict, dataset_name, value_column):
-            raise atscale_errors.UserError(
+            raise atscale_errors.ObjectNotFoundError(
                 f"Column '{value_column}' not found in the '{dataset_name}' dataset"
             )
         if key_columns:
             for column in key_columns:
                 if not model_utils._column_exists(project_dict, dataset_name, column):
-                    raise atscale_errors.UserError(
+                    raise atscale_errors.ObjectNotFoundError(
                         f"Column '{column}' not found in the '{dataset_name}' dataset"
                     )
 
         attributes = data_model_helpers._get_draft_features(
             project_dict=project_dict,
             data_model_name=self.name,
-            feature_type=FeatureType.CATEGORICAL,
+            feature_type=enums.FeatureType.CATEGORICAL,
         )
         found = False
         for name, info in attributes.items():
@@ -3700,26 +3678,26 @@ class DataModel:
                 break
         if not found:
             if existing_level not in attributes:
-                raise atscale_errors.UserError(f"Level '{existing_level}' not found.")
+                raise atscale_errors.ObjectNotFoundError(f"Level '{existing_level}' not found.")
             else:
-                raise atscale_errors.UserError(
+                raise atscale_errors.WorkFlowError(
                     f"Level '{existing_level}' is roleplayed. Levels must be added to base hierachies."
                 )
         if hierarchy_name not in attribute["base_hierarchy"]:
-            raise atscale_errors.UserError(
+            raise ValueError(
                 f"Level '{existing_level}' does not belong to hierarchy '{hierarchy_name}'"
             )
 
         dimensions = self.get_dimensions()
         if dimensions[attribute["dimension"]]["type"] == "Time":
-            if level_type == TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type cannot be TimeSteps.Regular for time dimensions"
+            if level_type == enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type cannot be enums.TimeSteps.Regular for time dimensions"
                 )
         else:
-            if level_type != TimeSteps.Regular:
-                raise atscale_errors.UserError(
-                    f"level_type must be TimeSteps.Regular for non time dimensions"
+            if level_type != enums.TimeSteps.Regular:
+                raise ValueError(
+                    f"level_type must be enums.TimeSteps.Regular for non time dimensions"
                 )
 
         project_dict = self.project._get_dict()
@@ -3743,6 +3721,7 @@ class DataModel:
         self,
         secondary_attribute: bool = False,
         folder_list: List[str] = None,
+        use_published: bool = True,
     ) -> Dict:
         """Gets a dictionary of dictionaries with the published hierarchy names and metadata. Secondary attributes are treated as
              their own hierarchies, they are hidden by default, but can be shown with the secondary_attribute parameter.
@@ -3752,25 +3731,39 @@ class DataModel:
                 secondary_attributes, False will return only non-secondary attributes. Defaults to False.
             folder_list (List[str], optional): The list of folders in the data model containing hierarchies to exclusively list.
                 Defaults to None to not filter by folder.
+            use_published (bool, optional): whether to get the hierarchies of the published or draft data model.
+                    Defaults to True to use the published version.
 
         Returns:
-            dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
+            Dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
                 while the inner keys are the following: 'dimension', 'description', 'caption', 'folder', 'type'(value is
                 Time or Standard), 'secondary_attribute'.
         """
         inspection = getfullargspec(self.get_hierarchies)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        filter_by = {}
-        if not secondary_attribute:
-            filter_by[Hierarchy.secondary_attribute] = [False]
+        if use_published:
+            project_helpers._check_published(self.project)
+            filter_by = {}
+            if not secondary_attribute:
+                filter_by[enums.Hierarchy.secondary_attribute] = [False]
 
-        # folder list is more involved as we need to append if the dict already exists
-        if folder_list is not None:
-            if type(folder_list) == str:
-                folder_list = [folder_list]
-            filter_by[Hierarchy.folder] = folder_list
-        return metadata_utils._get_hierarchies(self, filter_by=filter_by)
+            # folder list is more involved as we need to append if the dict already exists
+            if folder_list is not None:
+                if type(folder_list) == str:
+                    folder_list = [folder_list]
+                filter_by[enums.Hierarchy.folder] = folder_list
+            ret_dict = metadata_utils._get_hierarchies(self, filter_by=filter_by)
+        else:
+            model_utils._perspective_check(
+                self, "Getting draft hierarchies is not supported for perspectives."
+            )
+            ret_dict = data_model_helpers._get_draft_hierarchies(
+                self.project._get_dict(), self.cube_id, folder_list
+            )
+
+        ret_dict = dict(sorted(ret_dict.items(), key=lambda x: x[0].upper()))
+        return ret_dict
 
     def get_hierarchy_levels(
         self,
@@ -3785,9 +3778,15 @@ class DataModel:
             List[str]: A list containing the hierarchy's levels
         """
         inspection = getfullargspec(self.get_hierarchy_levels)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return metadata_utils._get_hierarchy_levels(self, hierarchy_name)
+        project_helpers._check_published(self.project)
+        ret_list = metadata_utils._get_hierarchy_levels(self, hierarchy_name)
+
+        if ret_list == []:
+            raise atscale_errors.ObjectNotFoundError(f'No hierarchy named "{hierarchy_name}" found')
+
+        return sorted(ret_list, key=lambda x: x.upper())
 
     def get_feature_description(
         self,
@@ -3802,17 +3801,22 @@ class DataModel:
             str: The description of the given feature.
         """
         inspection = getfullargspec(self.get_feature_description)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        existing_features = data_model_helpers._get_published_features(data_model=self)
+        project_helpers._check_published(self.project)
+
+        existing_features = data_model_helpers._get_published_features(
+            data_model=self, feature_list=[feature]
+        )
 
         model_utils._check_features(
             features=[feature],
             check_list=existing_features,
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
         )
 
-        return metadata_utils._get_feature_description(self, feature)
+        feature_description = existing_features[feature].get("description", "")
+        return feature_description
 
     def get_feature_expression(
         self,
@@ -3827,17 +3831,21 @@ class DataModel:
             str: The expression of the given feature.
         """
         inspection = getfullargspec(self.get_feature_expression)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        existing_features = data_model_helpers._get_published_features(data_model=self)
+        project_helpers._check_published(self.project)
+
+        existing_features = data_model_helpers._get_published_features(
+            data_model=self, feature_list=[feature]
+        )
 
         model_utils._check_features(
             features=[feature],
             check_list=existing_features,
-            errmsg=CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
+            errmsg=enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=True),
         )
 
-        return metadata_utils._get_feature_expression(self, feature=feature)
+        return existing_features[feature].get("expression", "")
 
     def get_all_numeric_feature_names(
         self,
@@ -3853,9 +3861,10 @@ class DataModel:
             List[str]: A list of the query names of numeric features in the data model and, if given, in the folder.
         """
         inspection = getfullargspec(self.get_all_numeric_feature_names)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return metadata_utils._get_all_numeric_feature_names(self, folder=folder)
+        ret_list = metadata_utils._get_all_numeric_feature_names(self, folder=folder)
+        return sorted(ret_list, key=lambda x: x.upper())
 
     def get_all_categorical_feature_names(
         self,
@@ -3871,9 +3880,10 @@ class DataModel:
             List[str]: A list of the query names of categorical features in the DataModel and, if given, in the folder.
         """
         inspection = getfullargspec(self.get_all_categorical_feature_names)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
-        return metadata_utils._get_all_categorical_feature_names(self, folder=folder)
+        ret_list = metadata_utils._get_all_categorical_feature_names(self, folder=folder)
+        return sorted(ret_list, key=lambda x: x.upper())
 
     def get_folders(self) -> List[str]:
         """Returns a list of the available folders in the published DataModel.
@@ -3881,9 +3891,11 @@ class DataModel:
         Returns:
             List[str]: A list of the available folders
         """
-        return metadata_utils._get_folders(self)
+        project_helpers._check_published(self.project)
+        ret_list = metadata_utils._get_folders(self)
+        return sorted(ret_list, key=lambda x: x.upper())
 
-    def get_connected_warehouse(self):
+    def get_connected_warehouse(self) -> str:
         """Returns the warehouse id utilized in this data_model
 
         Returns:
@@ -3904,7 +3916,7 @@ class DataModel:
             List[str]: A list of the names of the hierarchies that have relationships to the dataset.
         """
         inspection = getfullargspec(self.list_related_hierarchies)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube_dict = model_utils._get_model_dict(self, project_dict=project_dict)[0]
@@ -3913,14 +3925,18 @@ class DataModel:
             project_parser.get_datasets(project_dict), "name", dataset_name
         )
         if dataset is None:
-            raise atscale_errors.UserError(f'No fact dataset named "{dataset_name}" found')
+            raise atscale_errors.ObjectNotFoundError(
+                f'No fact dataset named "{dataset_name}" found'
+            )
         # find the dataset reference using the id
         key_ref_ids = []
         dataset_ref = dictionary_parser.parse_dict_list(
             data_model_parser._get_dataset_refs(cube_dict), "id", dataset.get("id")
         )
         if dataset_ref is None:
-            raise atscale_errors.UserError(f'No fact dataset named "{dataset_name}" found')
+            raise atscale_errors.ObjectNotFoundError(
+                f'No fact dataset named "{dataset_name}" found'
+            )
         # grab all key-refs from the dataset so we can find the attributes
         for key_ref in dataset_ref.get("logical", {}).get("key-ref", []):
             key_ref_ids.append(key_ref.get("id"))
@@ -3959,7 +3975,7 @@ class DataModel:
             List[str]: A list of the names of the datasets that have relationships to the hierarchy.
         """
         inspection = getfullargspec(self.list_related_datasets)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         cube_dict = model_utils._get_model_dict(self, project_dict=project_dict)[0]
@@ -3974,7 +3990,7 @@ class DataModel:
             if hierarchy is not None:
                 break
         if hierarchy is None:
-            raise atscale_errors.UserError(f'No hierarchy named "{hierarchy_name}" found')
+            raise atscale_errors.ObjectNotFoundError(f'No hierarchy named "{hierarchy_name}" found')
         # the hierarchy we were passed could be a part of a snowflake dimension so we need to add related ones
         hierarchy_names = [hierarchy.get("name")]
         model_utils._add_related_hierarchies(self, hierarchy_names)
@@ -4035,7 +4051,7 @@ class DataModel:
         )
 
         inspection = getfullargspec(self.create_perspective)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         perspective_id = data_model_helpers._create_perspective(
             data_model=self,
@@ -4076,7 +4092,7 @@ class DataModel:
         )
 
         inspection = getfullargspec(self.update_perspective)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         perspective_id = data_model_helpers._create_perspective(
             data_model=self,
@@ -4100,7 +4116,7 @@ class DataModel:
             publish (bool, optional): Whether to publish the updated project. Defaults to True.
         """
         inspection = getfullargspec(self.delete)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         project_dict = self.project._get_dict()
         if self.is_perspective():
@@ -4141,7 +4157,7 @@ class DataModel:
         model_utils._perspective_check(self)
 
         inspection = getfullargspec(self.bulk_operator)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         # validate error limit
         if error_limit <= 0 or error_limit is None:
@@ -4162,7 +4178,7 @@ class DataModel:
             data_model_helpers._get_draft_features(
                 project_dict=project_dict,
                 data_model_name=self.name,
-                feature_type=FeatureType.ALL,
+                feature_type=enums.FeatureType.ALL,
             ),
         )
 
@@ -4176,7 +4192,7 @@ class DataModel:
             error_limit=error_limit,
         )
         # publish
-        self.project._update_project(project_json=project_dict, publish=publish)
+        self.project._update_project(project_dict=project_dict, publish=publish)
 
     def clone(
         self,
@@ -4197,16 +4213,17 @@ class DataModel:
         model_utils._perspective_check(self, "Clone is not supported for perspectives.")
 
         inspection = getfullargspec(self.clone)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         for cube in project_parser.get_cubes(self.project._get_dict()):
             if cube.get("name") == query_name:
-                raise ValueError(
+                raise atscale_errors.CollisionError(
                     f"There is already a data model in the project with the query name: {query_name}"
                 )
-        u = endpoints._endpoint_design_org(
+        u = endpoints._endpoint_design_copy_draft_project(
             self.project._atconn,
-            suffix=f"/project/{self.project.draft_project_id}/cube/{self.id}/copy",
+            draft_project_id=self.project.draft_project_id,
+            cube_id=self.id,
         )
         data = {
             "name": query_name,
@@ -4215,9 +4232,82 @@ class DataModel:
         }
         d = json.dumps(data)
         response = self.project._atconn._submit_request(
-            request_type=RequestType.POST, url=u, data=d
+            request_type=enums.RequestType.POST, url=u, data=d
         )
         id = json.loads(response.content)["response"]["id"]
         if publish:
             self.project.publish()
         return DataModel(id, self.project)
+
+    def create_user_defined_aggregate(
+        self,
+        name: str,
+        categorical_features: List[str] = None,
+        numeric_features: List[str] = None,
+        publish: bool = True,
+    ) -> str:
+        """Creates a user defined aggregate containing the given categorical and numeric features. Calculated features cannot be added.
+
+        Args:
+            name (str): The name of the aggregate.
+            categorical_features (List[str], optional): Categorical features to add. Defaults to None.
+            numeric_features (List[str], optional): Numeric features to add. Defaults to None.
+            publish (bool, optional): Whether to publish the updated project. Defaults to True.
+
+        Returns:
+            str: The id of the created aggregate
+        """
+        model_utils._perspective_check(
+            self,
+            "create_user_defined_aggregate is not supported for perspectives. Use the base data model.",
+        )
+
+        inspection = getfullargspec(self.create_user_defined_aggregate)
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
+
+        project_dict = self.project._get_dict()
+        cube_dict = project_parser.get_cube(project_dict, self.cube_id)
+        cube_dict.setdefault("aggregates", {}).setdefault("aggregate", [])
+
+        aggregate_names = [x["name"] for x in cube_dict["aggregates"]["aggregate"]]
+        if name in aggregate_names:
+            raise atscale_errors.CollisionError(f"An aggregate named: '{name}' already exists")
+
+        all_features_info = data_model_helpers._get_draft_features(
+            project_dict, data_model_name=self.name
+        )
+        # Check to see that features passed are numeric
+        numeric_features_info = dictionary_parser.filter_dict(
+            to_filter=all_features_info,
+            val_filters=[lambda i: i["feature_type"] == enums.FeatureType.NUMERIC.name_val],
+        )
+        # Check to see that features passed are numeric
+        categorical_features_info = dictionary_parser.filter_dict(
+            to_filter=all_features_info,
+            val_filters=[lambda i: i["feature_type"] == enums.FeatureType.CATEGORICAL.name_val],
+        )
+
+        if numeric_features:
+            model_utils._check_features(
+                numeric_features,
+                numeric_features_info,
+                errmsg=enums.CheckFeaturesErrMsg.NUMERIC.get_errmsg(is_published=False),
+            )
+            for feature in numeric_features:
+                if numeric_features_info[feature]["atscale_type"] == "Calculated":
+                    raise ValueError(
+                        f"Invalid numeric feature: {feature} calculated measures cannot be added to aggregates."
+                    )
+        elif not categorical_features:
+            raise ValueError(
+                f"No features passed. numeric_features and categorical features cannot both be None."
+            )
+        if categorical_features:
+            model_utils._check_features(
+                categorical_features,
+                categorical_features_info,
+                errmsg=enums.CheckFeaturesErrMsg.CATEGORICAL.get_errmsg(is_published=False),
+            )
+        return data_model_helpers._create_user_defined_aggregate(
+            self, name, categorical_features, numeric_features, publish
+        )

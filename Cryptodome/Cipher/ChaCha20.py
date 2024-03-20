@@ -28,17 +28,17 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-from Cryptodome.Random import get_random_bytes
+from Crypto.Random import get_random_bytes
 
-from Cryptodome.Util.py3compat import _copy_bytes
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util.py3compat import _copy_bytes
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   create_string_buffer,
                                   get_raw_buffer, VoidPointer,
                                   SmartPointer, c_size_t,
                                   c_uint8_ptr, c_ulong,
                                   is_writeable_buffer)
 
-_raw_chacha20_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._chacha20",
+_raw_chacha20_lib = load_pycryptodome_raw_lib("Crypto.Cipher._chacha20",
                     """
                     int chacha20_init(void **pState,
                                       const uint8_t *key,
@@ -257,7 +257,7 @@ def new(**kwargs):
             If not provided, 8 bytes will be randomly generated
             (you can find them back in the ``nonce`` attribute).
 
-    :Return: a :class:`Cryptodome.Cipher.ChaCha20.ChaCha20Cipher` object
+    :Return: a :class:`Crypto.Cipher.ChaCha20.ChaCha20Cipher` object
     """
 
     try:

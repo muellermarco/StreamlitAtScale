@@ -1,13 +1,9 @@
 import logging
 import uuid
-from typing import List, Union
-from atscale.base.enums import (
-    Aggs,
-    MappedColumnKeyTerminator,
-    MappedColumnFieldTerminator,
-    MappedColumnDataTypes,
-    TimeSteps,
-)
+from typing import Dict, List, Union
+
+from atscale.base import enums
+from atscale.errors import atscale_errors
 
 logger = logging.getLogger(__name__)
 
@@ -124,12 +120,12 @@ def create_column_dict(
 
 
 def create_map_column_dict(
-    columns: List[dict],
-    field_terminator: MappedColumnFieldTerminator,
-    key_terminator: MappedColumnKeyTerminator,
+    columns: List[Dict],
+    field_terminator: enums.MappedColumnFieldTerminator,
+    key_terminator: enums.MappedColumnKeyTerminator,
     first_char_delim: bool,
-    map_key_type: MappedColumnDataTypes,
-    map_value_type: MappedColumnDataTypes,
+    map_key_type: enums.MappedColumnDataTypes,
+    map_value_type: enums.MappedColumnDataTypes,
     column_name: str,
 ):
     return {
@@ -152,7 +148,7 @@ def create_calculated_member_dict(
     caption: str,
     visible: bool,
     description: str = None,
-    formatting: dict = None,
+    formatting: Dict = None,
     folder: str = None,
 ):
     new_calculated_measure = {
@@ -188,7 +184,7 @@ def create_hierarchy_level_dict(
     visible: bool,
     level_id: str,
     keyed_attribute_id: str,
-    level_type: TimeSteps = None,
+    level_type: enums.TimeSteps = None,
 ):
     properties = {"unique-in-parent": False, "visible": visible}
     if level_type:
@@ -233,7 +229,7 @@ def create_dimension_dict(
     dim_id: str,
     name: str,
     visible: bool,
-    hierarchy_dict: dict = None,
+    hierarchy_dict: Dict = None,
     time_dimension: bool = False,
     participating_datasets: List[str] = None,
     description: str = "",
@@ -256,14 +252,19 @@ def create_dimension_dict(
 def create_measure_dict(
     measure_id: str,
     measure_name: str,
-    agg_type: Aggs,
+    agg_type: enums.Aggs,
     caption: str,
     description: str = None,
-    formatting: dict = None,
+    formatting: Dict = None,
     folder: str = None,
     visible: bool = True,
     key_ref: str = None,
 ):
+    if agg_type.requires_key_ref() and key_ref is None:
+        raise atscale_errors.ModelingError(
+            f"Error creating {measure_name}: the key-ref id required for this "
+            f"{agg_type.name} was not found."
+        )
     agg_dict = agg_type.get_dict_expression(key_ref)
     properties = {"type": agg_dict, "caption": caption, "visible": visible}
     if description is not None:
@@ -283,10 +284,13 @@ def create_dataset_dict(
     dataset_name: str,
     table_name: str,
     warehouse_id: str,
-    columns: List[dict],
+    columns: List[Dict],
     allow_aggregates: bool,
     schema: str = None,
     database: str = None,
+    incremental_indicator: str = None,
+    grace_period: int = 0,
+    safe_to_join_to_incremental: bool = False,
 ):
     dataset = {
         "id": dataset_id,
@@ -299,7 +303,7 @@ def create_dataset_dict(
         "physical": {
             "connection": {"id": warehouse_id},
             "tables": [{"name": table_name}],
-            "immutable": False,
+            "immutable": safe_to_join_to_incremental,
             "columns": columns,
         },
         "logical": {},
@@ -309,6 +313,22 @@ def create_dataset_dict(
         dataset["physical"]["tables"][0]["schema"] = schema
     if database:
         dataset["physical"]["tables"][0]["database"] = database
+    if incremental_indicator is not None:
+        ref_id = str(uuid.uuid4())
+        dataset["logical"] = {
+            "incremental-indicator": {
+                "grace-period": grace_period,
+                "key-ref": {"id": ref_id},
+            },
+            "key-ref": [
+                {
+                    "column": [incremental_indicator],
+                    "complete": "true",
+                    "id": ref_id,
+                    "unique": False,
+                }
+            ],
+        }
 
     return dataset
 
@@ -317,9 +337,12 @@ def create_query_dataset_dict(
     dataset_id: str,
     dataset_name: str,
     warehouse_id: str,
-    columns: List[dict],
+    columns: List[Dict],
     allow_aggregates: bool,
     query: str,
+    incremental_indicator: str = None,
+    grace_period: int = 0,
+    safe_to_join_to_incremental: bool = False,
 ):
     dataset = {
         "id": dataset_id,
@@ -332,11 +355,27 @@ def create_query_dataset_dict(
         "physical": {
             "connection": {"id": warehouse_id},
             "queries": [{"sqls": [{"expression": query}]}],
-            "immutable": False,
+            "immutable": safe_to_join_to_incremental,
             "columns": columns,
         },
         "logical": {},
     }
+    if incremental_indicator is not None:
+        ref_id = str(uuid.uuid4())
+        dataset["logical"] = {
+            "incremental-indicator": {
+                "grace-period": grace_period,
+                "key-ref": {"id": ref_id},
+            },
+            "key-ref": [
+                {
+                    "column": [incremental_indicator],
+                    "complete": "true",
+                    "id": ref_id,
+                    "unique": False,
+                }
+            ],
+        }
     return dataset
 
 
@@ -350,7 +389,7 @@ def create_query_for_post_request(
     use_local_cache=True,
     use_aggregate_cache=True,
     timeout=10,
-) -> dict:
+) -> Dict:
     return {
         "language": "SQL",
         "query": query,
@@ -368,7 +407,7 @@ def create_query_for_post_request(
     }
 
 
-def create_cube_dict(query_name: str, caption: str = "", description: str = "") -> dict:
+def create_cube_dict(query_name: str, caption: str = "", description: str = "") -> Dict:
     if not caption:
         caption = query_name
     cube = {

@@ -25,10 +25,10 @@
 
 __all__ = ['generate', 'construct', 'ElGamalKey']
 
-from Cryptodome import Random
-from Cryptodome.Math.Primality import ( generate_probable_safe_prime,
+from Crypto import Random
+from Crypto.Math.Primality import ( generate_probable_safe_prime,
                                     test_probable_prime, COMPOSITE )
-from Cryptodome.Math.Numbers import Integer
+from Crypto.Math.Numbers import Integer
 
 # Generate an ElGamal key with N bits
 def generate(bits, randfunc):
@@ -262,7 +262,7 @@ class ElGamalKey(object):
         from pickle import PicklingError
         raise PicklingError
 
-    # Methods defined in PyCryptodome that we don't support anymore
+    # Methods defined in PyCrypto that we don't support anymore
 
     def sign(self, M, K):
         raise NotImplementedError

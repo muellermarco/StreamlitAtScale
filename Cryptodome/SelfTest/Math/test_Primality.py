@@ -35,12 +35,12 @@
 
 import unittest
 
-from Cryptodome.SelfTest.st_common import list_test_cases
+from Crypto.SelfTest.st_common import list_test_cases
 
-from Cryptodome.Util.py3compat import *
+from Crypto.Util.py3compat import *
 
-from Cryptodome.Math.Numbers import Integer
-from Cryptodome.Math.Primality import (
+from Crypto.Math.Numbers import Integer
+from Crypto.Math.Primality import (
         PROBABLY_PRIME, COMPOSITE,
         miller_rabin_test, lucas_test,
         test_probable_prime,
@@ -86,7 +86,7 @@ class TestPrimality(unittest.TestCase):
         for np in not_primes:
             self.assertEqual(test_probable_prime(np), COMPOSITE)
 
-        from Cryptodome.Util.number import sieve_base
+        from Crypto.Util.number import sieve_base
         for p in sieve_base[:100]:
             res = test_probable_prime(p)
             self.assertEqual(res, PROBABLY_PRIME)

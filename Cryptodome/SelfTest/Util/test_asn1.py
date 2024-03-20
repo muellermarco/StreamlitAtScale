@@ -1,5 +1,5 @@
 #
-#  SelfTest/Util/test_asn.py: Self-test for the Cryptodome.Util.asn1 module
+#  SelfTest/Util/test_asn.py: Self-test for the Crypto.Util.asn1 module
 #
 # ===================================================================
 #
@@ -31,12 +31,12 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-"""Self-tests for Cryptodome.Util.asn1"""
+"""Self-tests for Crypto.Util.asn1"""
 
 import unittest
 
-from Cryptodome.Util.py3compat import *
-from Cryptodome.Util.asn1 import (DerObject, DerSetOf, DerInteger,
+from Crypto.Util.py3compat import *
+from Crypto.Util.asn1 import (DerObject, DerSetOf, DerInteger,
                              DerBitString,
                              DerObjectId, DerNull, DerOctetString,
                              DerSequence, DerBoolean)
@@ -831,7 +831,7 @@ class DerBooleanTests(unittest.TestCase):
 
 
 def get_tests(config={}):
-    from Cryptodome.SelfTest.st_common import list_test_cases
+    from Crypto.SelfTest.st_common import list_test_cases
     listTests = []
     listTests += list_test_cases(DerObjectTests)
     listTests += list_test_cases(DerIntegerTests)

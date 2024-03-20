@@ -2,19 +2,16 @@ import logging
 import uuid
 import json
 from typing import List, Dict, Tuple, Union
-from pandas import DataFrame
+from inspect import getfullargspec
 
 from atscale.data_model import data_model_helpers as dmh
 from atscale.errors import atscale_errors
-from atscale.base import enums, templates
-from atscale.base.enums import Aggs, CheckFeaturesErrMsg
+from atscale.base import enums, templates, endpoints
 from atscale.parsers import data_model_parser, project_parser, dictionary_parser
-from atscale.utils import dimension_utils, feature_utils, project_utils, time_utils, db_utils
+from atscale.utils import dimension_utils, feature_utils, project_utils, time_utils
+from atscale.utils import db_utils, validation_utils
 from atscale.db.sql_connection import SQLConnection
 from atscale.connection.connection import _Connection
-from atscale.base import endpoints
-from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
 
 
 logger = logging.getLogger(__name__)
@@ -23,8 +20,6 @@ logger = logging.getLogger(__name__)
 def _add_data_set_ref(
     model_dict: Dict,
     dataset_id: str,
-    key_refs=None,
-    attribute_refs=None,
     allow_aggregates=True,
     create_hinted_aggregate=False,
 ):
@@ -33,32 +28,30 @@ def _add_data_set_ref(
     Args:
         model_dict (Dict): the dict representation of the datamodel to add the dataset to
         dataset_id (str): the id of the dataset to create
+        allow_aggregates (bool, Optional): if the new dataset should allow aggregates, defaults to True
+        create_hinted_aggregate (bool, Optional): if the new dataset should create hinted aggs, defaults to True
     """
     data_set_ref = templates.create_dataset_ref_dict(
         dataset_id=dataset_id,
-        key_refs=key_refs,
-        attribute_refs=attribute_refs,
         allow_aggregates=allow_aggregates,
         create_hinted_aggregate=create_hinted_aggregate,
     )
-    model_dict.setdefault("data-sets", {})
-    model_dict["data-sets"].setdefault("data-set-ref", [])
-    model_dict["data-sets"]["data-set-ref"].append(data_set_ref)
+    model_dict.setdefault("data-sets", {}).setdefault("data-set-ref", []).append(data_set_ref)
 
 
 def _check_conflicts(
-    to_add: Union[list, dict, set, str],
+    to_add: Union[list, Dict, set, str],
     data_model: "DataModel" = None,
     use_published: bool = False,
-    project_dict: dict = None,
+    project_dict: Dict = None,
     errmsg: str = None,
     diff_in_msg: bool = True,
-    preexisting: Union[list, dict, set, str] = None,
+    preexisting: Union[list, Dict, set, str] = None,
 ):
     feature_type = enums.FeatureType.ALL
     if isinstance(to_add, str):
         to_add = [to_add]
-    elif isinstance(to_add, dict):
+    elif isinstance(to_add, Dict):
         to_add = list(to_add.keys())
     else:
         to_add = list(to_add)
@@ -81,39 +74,38 @@ def _check_conflicts(
             errmsg = (
                 f"Invalid feature names: {conflicts}. Query name collision with existing features."
             )
-        raise atscale_errors.UserError(errmsg)
+        raise atscale_errors.CollisionError(errmsg)
 
 
 def _check_features(
-    features: Union[list, dict, set],
-    check_list: Union[list, dict, set],
+    features: Union[list, Dict, set],
+    check_list: Union[list, Dict, set],
     errmsg: str = None,
     diff_in_msg: bool = True,
-):
+) -> bool:
     """Checks that the given feature(s) exist(s) within a specified list of features.
 
     Args:
-        features (Union[list, dict, set]): feature(s) to confirm exist in the provided list. If a dict is passed,
+        features (Union[list, Dict, set]): feature(s) to confirm exist in the provided list. If a dict is passed,
                                            the keys will be used.
-        check_list (Union[list, dict, set]): features of the data model to check against. If a dict is passed, the keys
+        check_list (Union[list, Dict, set]): features of the data model to check against. If a dict is passed, the keys
                                              will be used.
         errmsg (str, optional): Error message to raise if feature not found. Defaults to None.
         diff_in_msg (bool, optional): Whether format(sorted(non_existent_features)) should be called on the given errmsg.
                                       Defaults to True.
 
-    Raises:
-        atscale_errors.UserError: error is raised if any features of interest not found, can be customized via errmsg arg
-
     Returns:
-        boolean: True if no error found
+        bool: True if no error found
     """
     set_dif = set(features) - set(check_list)
     if len(set_dif) > 0:
         if errmsg:
             errmsg = errmsg.format(sorted(list(set_dif))) if diff_in_msg else errmsg
-            raise atscale_errors.UserError(errmsg)
+            raise atscale_errors.ObjectNotFoundError(errmsg)
         else:
-            raise atscale_errors.UserError(CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False))
+            raise atscale_errors.ObjectNotFoundError(
+                enums.CheckFeaturesErrMsg.ALL.get_errmsg(is_published=False)
+            )
     return True
 
 
@@ -130,13 +122,13 @@ def _create_dataset_relationship(
     roleplay_features=None,
     table_columns=None,
     allow_aggregates=True,
-):
+) -> Dict:
     """Mutates and returns the given project_dict to create a dataset, join the given features, and join the dataset
     to the cube if it was not already.
 
     Args:
         atconn (_Connection): A Connection object connected to the server of the project the parameters correspond to.
-        project_dict (dict): The project_dict to mutate and return
+        project_dict (Dict): The project_dict to mutate and return
         cube_id (str): The id of the cube the dataset will be joined to.
         database (str): The database that the created dataset will point at.
         schema (str): The schema that the created dataset will point at.
@@ -157,7 +149,7 @@ def _create_dataset_relationship(
     """
     project_datasets = project_parser.get_datasets(project_dict)
 
-    url = endpoints._endpoint_warehouse(atconn, f"/conn/{warehouse_id}/tables/cacheRefresh")
+    url = endpoints._endpoint_warehouse_tables_cacheRefresh(atconn, warehouse_id=warehouse_id)
     atconn._submit_request(request_type=enums.RequestType.POST, url=url)
 
     # look for a dataset that may already have the table_name for the table we're trying to join to the cube (meaning the table
@@ -182,6 +174,7 @@ def _create_dataset_relationship(
             count += 1
         # the prior code assumed a schema but checked if database was None prior to setting
         project_dataset, dataset_id = project_utils.create_dataset(
+            project_dict,
             table_name,
             warehouse_id,
             table_columns,
@@ -190,8 +183,6 @@ def _create_dataset_relationship(
             dataset_name=dataset_name,
             allow_aggregates=allow_aggregates,
         )
-        # and we'll add the newly minted dataset to the project_dict
-        project_utils.add_dataset(project_dict=project_dict, dataset=project_dataset)
     else:
         dataset_name = project_parser.get_dataset(project_dict=project_dict, dataset_id=dataset_id)[
             "name"
@@ -209,7 +200,7 @@ def _create_dataset_relationship(
 
 
 def _create_dataset_relationship_from_dataset(
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     dataset_name: str,
     join_features: List[str],
@@ -217,12 +208,12 @@ def _create_dataset_relationship_from_dataset(
     roleplay_features: List[str] = None,
     allow_aggregates: bool = True,
     create_hinted_aggregate: bool = False,
-):
+) -> Dict:
     """Mutates and returns the given project_dict to join the given features and join the dataset, of the given name,
     to the cube (if not joined already) of the given cube_id.
 
     Args:
-        project_dict (dict): The project_dict to mutate and return.
+        project_dict (Dict): The project_dict to mutate and return.
         cube_id (str): The id of the cube the dataset will be joined to.
         dataset_name (str): The name of the dataset to target. This dataset must exist in project_datasets.
             This will also become the name of the dataset.
@@ -248,8 +239,7 @@ def _create_dataset_relationship_from_dataset(
     cube_dict = project_parser.get_cube(project_dict, cube_id)
 
     found_dataset_ref = False
-    cube_dict.setdefault("data-sets", {})
-    cube_dict["data-sets"].setdefault("data-set-ref", [])
+    cube_dict.setdefault("data-sets", {}).setdefault("data-set-ref", [])
     for ds_ref in cube_dict["data-sets"]["data-set-ref"]:
         if ds_ref["id"] == dataset_id:
             found_dataset_ref = True
@@ -292,18 +282,14 @@ def _create_dataset_relationship_from_dataset(
         dimension = attribute_dict[join_feature]["dict"]
         dimension_type = attribute_dict[join_feature]["type"]
         # If we already hava a ref skip it
-        if (
-            len(
-                [
-                    x
-                    for x in dataset_key_refs
-                    if x["id"] == dimension["key-ref"]
-                    and x.get("ref-path", {}).get("new-ref", {}).get("ref-naming", "")
-                    == roleplay_feature
-                ]
-            )
-            == 0
-        ):
+        ref_found = False
+        for x in dataset_key_refs:
+            ref_name = x.get("ref-path", {}).get("new-ref", {}).get("ref-naming", "")
+            if (x["id"] == dimension["key-ref"]) and (ref_name == roleplay_feature):
+                ref_found = True
+                break
+
+        if not ref_found:
             key_ref = {
                 "id": dimension["key-ref"],
                 "unique": False,
@@ -328,16 +314,13 @@ def _create_dataset_relationship_from_dataset(
             attr = {"id": dimension["id"], "complete": "partial", "column": join_column}
             attribute_refs.append(attr)
 
-    data_set_ref["logical"].setdefault("key-ref", [])
-    data_set_ref["logical"]["key-ref"] = data_set_ref["logical"]["key-ref"] + key_refs
-    data_set_ref["logical"].setdefault("attribute-ref", [])
+    data_set_ref["logical"]["key-ref"] = data_set_ref["logical"].get("key-ref", []) + key_refs
     data_set_ref["logical"]["attribute-ref"] = (
-        data_set_ref["logical"]["attribute-ref"] + attribute_refs
+        data_set_ref["logical"].get("attribute-ref", []) + attribute_refs
     )
+
     # If we found the dataset ref we are updating in place but if not we need to add it to the list
     if not found_dataset_ref:
-        cube_dict.setdefault("data-sets", {})
-        cube_dict["data-sets"].setdefault("data-set-ref", [])
         cube_dict["data-sets"]["data-set-ref"].append(data_set_ref)
     return project_dict
 
@@ -391,12 +374,12 @@ def _create_semantic_model(
     atconn: _Connection,
     dbconn: SQLConnection,
     table_name: str,
-    project_dict: dict,
+    project_dict: Dict,
     cube_id: str,
     dataset_id: str,
     columns: list,
     generate_date_table: bool,
-    default_aggregation_type: Aggs = Aggs.SUM,
+    default_aggregation_type: enums.Aggs = enums.Aggs.SUM,
 ):
     """Mutates the provided project_dict to add a semantic layer. NOTE: This does not update the project! Calling methods must still update and publish the project using the resulting project_dict.
 
@@ -404,12 +387,12 @@ def _create_semantic_model(
         atconn (_Connection): AtScale connection
         dbconn (SQLConnection): DB connection
         table_name (str): the name of the table to create a semantic table for
-        project_dict (dict): the project dictionary (generally sparse result of creating a new project and adding a dataset)
+        project_dict (Dict): the project dictionary (generally sparse result of creating a new project and adding a dataset)
         cube_id (str): the id for the cube (generally sparse result of creating a new project)
         dataset_id (str): the id for the dataset associated with the table_name for which we will create a semantic layer
         columns (list[tuple]): columns of the table associated with table_name and dataset_id as AtScale sees them, generally with a name and type for each
         generate_date_table (bool): whether to generate a date dimension table. False will use degenerate dimensions for dates
-        default_aggregation_type (Aggs): the default aggregation type for numeric columns. Defaults to SUM
+        default_aggregation_type (enums.Aggs): the default aggregation type for numeric columns. Defaults to SUM
     """
     date_cols = []
     for column in columns:
@@ -468,7 +451,7 @@ def _create_semantic_model(
                 )
             except Exception as e:
                 logger.warning(
-                    f"Unable to determine TimeLevels in create_semantic_model for column {column_name} and db type {dbconn.platform_type}. The error was{e}"
+                    f"Unable to determine TimeLevels in create_semantic_model for column {column_name} and db type {dbconn.platform_type_str}. The error was{e}"
                 )
                 # skip the rest and go to the next column in the loop
                 continue
@@ -492,10 +475,13 @@ def _create_semantic_model(
                     atconn=atconn,
                     data_set=dataset,
                     column_name=join_column,
-                    expression=enums.TimeLevels.Day.get_sql_expression(column_name, platform_type),
+                    expression=enums.TimeLevels.Day.get_sql_expression(
+                        column_name, platform_type.dbconn
+                    ),
                 )
             if not date_key_feature:
-                database, schema = db_utils.get_database_and_schema(dbconn=dbconn)
+                database = dbconn._database
+                schema = dbconn._schema
                 warehouse_id = project_parser.get_project_warehouse(project_dict)
                 try:
                     date_table_name = db_utils.get_atscale_tablename(
@@ -505,7 +491,7 @@ def _create_semantic_model(
                         schema=schema,
                         table_name="atscale_date_table",
                     )
-                except atscale_errors.UserError:
+                except atscale_errors.ObjectNotFoundError:
                     dbconn._generate_date_table()
                     date_table_name = db_utils.get_atscale_tablename(
                         atconn=atconn,
@@ -521,9 +507,8 @@ def _create_semantic_model(
                     schema=schema,
                 )
                 date_dataset_dict, date_dataset_id = project_utils.create_dataset(
-                    date_table_name, warehouse_id, columns, database, schema
+                    project_dict, date_table_name, warehouse_id, columns, database, schema
                 )
-                project_utils.add_dataset(project_dict, date_dataset_dict)
                 date_key_feature = dimension_utils.create_time_dimension_from_table(
                     project_dict, cube_id, date_dataset_id
                 )
@@ -555,9 +540,9 @@ def _create_semantic_model(
 
 
 def _get_fact_datasets(
-    data_model_dict: dict,
+    data_model_dict: Dict,
     project_dict: Dict,
-) -> List[dict]:
+) -> List[Dict]:
     """Gets all fact datasets currently utilized by the DataModel and returns as a list.
 
     Args:
@@ -565,7 +550,7 @@ def _get_fact_datasets(
         project_dict (Dict): the project_dict to extract dataset metadata from
 
     Returns:
-        List[dict]: list of fact datasets
+        List[Dict]: list of fact datasets
     """
     fact_refs = data_model_parser._get_dataset_refs(cube_dict=data_model_dict)
     id_set = {ref["id"] for ref in fact_refs}
@@ -601,7 +586,7 @@ def _get_fact_dataset(
 def _get_dimension_datasets(
     data_model: "DataModel",
     project_dict: Dict,
-) -> List[dict]:
+) -> List[Dict]:
     """Gets dimension datasets currently utilized by the DataModel and returns as a list.
 
     Args:
@@ -609,43 +594,12 @@ def _get_dimension_datasets(
         project_dict (Dict): the project_dict to extract dataset metadata from
 
     Returns:
-        List[dict]: list of dimension datasets
+        List[Dict]: list of dimension datasets
     """
     hierarchies = data_model.get_hierarchies().keys()
-    hier_map = _get_roleplay_hierarchy_mapping(data_model=data_model)
-    hierarchies_mapped = [hier_map[x] for x in hierarchies]
-
-    participating_datasets = {}
-    for dimension in project_dict.get("dimensions", {}).get("dimension", []):
-        for hierarchy in dimension.get("hierarchy", []):
-            if hierarchy.get("name") in hierarchies_mapped:
-                for participating_dataset in dimension.get("participating-datasets", []):
-                    participating_datasets[participating_dataset] = True
-                break
-    all_datasets = []
-    for dataset in project_parser.get_datasets(project_dict):
-        if dataset.get("id") in participating_datasets:
-            all_datasets.append(dataset)
-    return all_datasets
-
-
-def _get_roleplay_hierarchy_mapping(
-    data_model,
-) -> dict:
-    """Gets a dictionary of dictionaries with the hierarchies names and metadata.
-    Secondary attributes are treated as their own hierarchies.
-
-    Args:
-        data_model (DataModel): The DataModel object to search through
-
-    Returns:
-        dict: A dictionary of dictionaries where the hierarchy names are the keys in the outer dictionary
-              while the inner keys are the following: 'dimension', 'description', 'caption', 'folder', 'type'(value is Time
-              or Standard), 'secondary_attribute'.
-    """
-    project_dict = data_model.project._get_dict()
     data_model_name = data_model.name
 
+    # get the roleplay hierarchy mapping
     draft_features = dmh._get_draft_features(
         project_dict=project_dict, data_model_name=data_model_name
     )
@@ -685,13 +639,27 @@ def _get_roleplay_hierarchy_mapping(
         if hierarchy not in roleplay_to_base:
             roleplay_to_base[hierarchy] = hierarchy
 
-    return roleplay_to_base
+    # process roleplaye mappings
+    hierarchies_mapped = [roleplay_to_base[x] for x in hierarchies]
+
+    participating_datasets = {}
+    for dimension in project_dict.get("dimensions", {}).get("dimension", []):
+        for hierarchy in dimension.get("hierarchy", []):
+            if hierarchy.get("name") in hierarchies_mapped:
+                for participating_dataset in dimension.get("participating-datasets", []):
+                    participating_datasets[participating_dataset] = True
+                break
+    all_datasets = []
+    for dataset in project_parser.get_datasets(project_dict):
+        if dataset.get("id") in participating_datasets:
+            all_datasets.append(dataset)
+    return all_datasets
 
 
 def _get_model_dict(
     data_model: "DataModel",
     project_dict: Dict,
-) -> Tuple[dict, dict]:
+) -> Tuple[Dict, Dict]:
     """Returns one or two dictionaries associated with this data_model
 
     Args:
@@ -699,7 +667,7 @@ def _get_model_dict(
         project_dict (Dict): the project_dict to extract the datamodel dict from
 
     Returns:
-        Tuple[dict, dict]: returns the cube and perspective respectively, where perspective may be None
+        Tuple[Dict, Dict]: returns the cube and perspective respectively, where perspective may be None
     """
     cube_dict = None
     perspective_dict = None
@@ -715,7 +683,7 @@ def _get_model_dict(
 def _get_columns(
     project_dict: Dict,
     dataset_name: str,
-) -> dict:
+) -> Dict:
     """Gets all of the currently visible columns in a given dataset, case-sensitive.
 
     Args:
@@ -723,7 +691,7 @@ def _get_columns(
         dataset_name (str): the name of the dataset to get columns from, case-sensitive.
 
     Returns:
-        dict: the columns in the given dataset
+        Dict: the columns in the given dataset
     """
 
     dataset_of_int = project_parser.get_dataset(
@@ -773,9 +741,7 @@ def _column_exists(
         bool: true if name found, else false.
     """
     all_column_names = _get_columns(project_dict, dataset_name).keys()
-    match_found_list = [col_name for col_name in all_column_names if col_name == column_name]
-
-    return len(match_found_list) > 0
+    return column_name in all_column_names
 
 
 def _perspective_check(
@@ -789,29 +755,26 @@ def _perspective_check(
         error_msg (str, optional): Custom error string. Defaults to None to throw write error.
     """
     inspection = getfullargspec(_perspective_check)
-    validate_by_type_hints(inspection=inspection, func_params=locals())
+    validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
     if error_msg is None:
         error_msg = "Write operations are not supported for perspectives."
 
     if data_model.is_perspective():
-        raise atscale_errors.UserError(error_msg)
+        raise atscale_errors.WorkFlowError(error_msg)
 
 
 def _add_related_hierarchies(
     data_model: "DataModel",
     hierarchy_list: List[str],
     hierarchies_to_check: List[str] = None,
-) -> None:
+):
     """Recursively adds hierarchies to hierarchy_list if they are related to a hierarchy in hierarchies_to_check.
 
     Args:
         data_model (DataModel): The DataModel to check
         hierarchy_list (List[str]): The list of hierarchies to add to.
         hierarchies_to_check (List[str], optional): The list of hierarchies to look  for relationships with. If None will use hierarchy_list.
-
-    Returns:
-        None
     """
     if hierarchies_to_check is None:
         hierarchies_to_check = hierarchy_list
@@ -894,7 +857,7 @@ def _validate_mdx_syntax(
         atconn (_Connection): the connection to use for validation
         expression (str): the expression to validate
         raises (bool, optional): Determines behavior if error is found. If
-            True it will raise error, else it will return erorr message. Defaults to True.
+            True it will raise error, else it will return error message. Defaults to True.
 
     Returns:
         str: Either the error or an empty string if no error found
@@ -907,20 +870,17 @@ def _validate_mdx_syntax(
     resp = json.loads(response.content)["response"]
     if not resp["isSuccess"]:
         if raises:
-            raise atscale_errors.UserError(resp["errorMsg"])
+            raise atscale_errors.AtScaleServerError(resp["errorMsg"])
         else:
             return resp["errorMsg"]
     return ""
 
 
-def _check_duplicate_features_get_data(feature_list: List[str]) -> None:
+def _check_duplicate_features_get_data(feature_list: List[str]):
     """Logs appropriate info if duplicate features encountered in get_data
 
     Args:
         feature_list (List[str]): The list of features to check
-
-    Returns:
-        None
     """
 
     dupe_count = len(feature_list) - len(set(feature_list))

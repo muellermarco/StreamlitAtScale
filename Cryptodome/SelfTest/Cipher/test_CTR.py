@@ -31,11 +31,11 @@
 import unittest
 from binascii import hexlify, unhexlify
 
-from Cryptodome.SelfTest.st_common import list_test_cases
-from Cryptodome.Util.py3compat import tobytes, bchr
-from Cryptodome.Cipher import AES, DES3
-from Cryptodome.Hash import SHAKE128, SHA256
-from Cryptodome.Util import Counter
+from Crypto.SelfTest.st_common import list_test_cases
+from Crypto.Util.py3compat import tobytes, bchr
+from Crypto.Cipher import AES, DES3
+from Crypto.Hash import SHAKE128, SHA256
+from Crypto.Util import Counter
 
 def get_tag_random(tag, length):
     return SHAKE128.new(data=tobytes(tag)).read(length)

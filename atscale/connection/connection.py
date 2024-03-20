@@ -7,13 +7,11 @@ import cryptocode
 import requests
 from html import unescape
 import re
-from atscale.base.enums import RequestType
-from atscale.errors import atscale_errors
-from atscale.utils import request_utils
-from atscale.utils.input_utils import choose_id_and_name_from_dict_list, get_string_input
-from atscale.base import endpoints, templates, enums
 from inspect import getfullargspec
-from atscale.utils.validation_utils import validate_by_type_hints
+
+from atscale.errors import atscale_errors
+from atscale.utils import request_utils, input_utils, validation_utils
+from atscale.base import endpoints, templates, enums
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +46,7 @@ class _Connection:
             verify (str|bool, optional): Whether to verify ssl certs. Can also be the path to the cert to use. Defaults to True.
         """
         inspection = getfullargspec(self.__init__)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         # use the setter so it can throw exception if server is None
         if len(server) > 0 and server[-1] == "/":
@@ -168,7 +166,7 @@ class _Connection:
             value (str): the new username string
         """
         inspection = getfullargspec(self.username)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if value is None:
             raise ValueError("Username cannot be null.")
@@ -178,11 +176,7 @@ class _Connection:
 
     @property
     def password(self) -> str:
-        """The getter for the password instance variable
-
-        Raises:
-            Exception: because passwords are meant to be secure.
-        """
+        """The getter for the password instance variable"""
         raise atscale_errors.UnsupportedOperationException(
             "Passwords are secure and cannot be retrieved."
         )
@@ -198,7 +192,7 @@ class _Connection:
             value (str): the new password to try
         """
         inspection = getfullargspec(self.password)
-        validate_by_type_hints(inspection=inspection, func_params=locals())
+        validation_utils.validate_by_type_hints(inspection=inspection, func_params=locals())
 
         if value is None:
             raise ValueError("Password cannot be null.")
@@ -223,7 +217,7 @@ class _Connection:
 
         server = self.design_center_url.split("//")[1].split(":")[0]
         response = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_jdbc_port(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_jdbc_port(self)
         )
         jdbc_port = json.loads(response.content)["response"]["hiveServer2Port"]
         self.jdbc_string = f"jdbc:hive2://{server}:{jdbc_port}/;AuthMech=3"
@@ -234,14 +228,14 @@ class _Connection:
         #    The following hits an endpoint that requires the "Administer Organization" permission
         #    so we can't use that right now
         #    response = self._submit_request(
-        #    request_type=RequestType.GET, url=endpoints._endpoint_engine_settings(self))
+        #    request_type=enums.RequestType.GET, url=endpoints._endpoint_engine_settings(self))
         #    engine_settings = json.loads(response.content)["response"]["engine"]
         #    engine_protocol = engine_settings["protocol"]
         #    engine_host = engine_settings["host"]
         #    engine_port = engine_settings["port"]
         #    self._engine_url = f"{engine_protocol}://{engine_host}:{engine_port}"
         resp = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_project_folder(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_project_folder(self)
         )
         match = re.search("""window\\.loadBalancerUrls = ({.*?});""", str(resp.content))
         if match:
@@ -260,30 +254,30 @@ class _Connection:
 
     def _submit_request(
         self,
-        request_type: RequestType,
+        request_type: enums.RequestType,
         url: str,
         content_type: str = "json",
         data: str = "",
         raises: bool = False,
     ):
         headers = request_utils.generate_headers(content_type, self.__token)
-        if request_type == RequestType.GET:
+        if request_type == enums.RequestType.GET:
             response = request_utils.get_rest_request(
                 url, data, headers, raises, session=self.session
             )
-        elif request_type == RequestType.PATCH:
+        elif request_type == enums.RequestType.PATCH:
             response = request_utils.patch_rest_request(
                 url, data, headers, raises, session=self.session
             )
-        elif request_type == RequestType.POST:
+        elif request_type == enums.RequestType.POST:
             response = request_utils.post_rest_request(
                 url, data, headers, raises, session=self.session
             )
-        elif request_type == RequestType.PUT:
+        elif request_type == enums.RequestType.PUT:
             response = request_utils.put_rest_request(
                 url, data, headers, raises, session=self.session
             )
-        elif request_type == RequestType.DELETE:
+        elif request_type == enums.RequestType.DELETE:
             response = request_utils.delete_rest_request(
                 url, data, headers, raises, session=self.session
             )
@@ -307,7 +301,7 @@ class _Connection:
         self,
         organization: str = None,
     ):
-        """Connects to atscale server using class variables necessary for authentication (which can be set directly, provided in constructor,
+        """Connects to AtScale server using class variables necessary for authentication (which can be set directly, provided in constructor,
         or passed as a parameter here). Validates the license, stores the api token, and sets the organization.
         May ask for user input.
 
@@ -332,12 +326,19 @@ class _Connection:
         if not self.jdbc_string:
             self._set_jdbc_string()
 
-    def _get_user_from_session(self):
+    def _get_user_id_from_session(self):
         response = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_session(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_session(self)
         )
         resp = json.loads(response.content)["response"]
         return resp["user_id"]
+
+    def _get_username(self):
+        response = self._submit_request(
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_user_account(self)
+        )
+        resp = json.loads(response.content)["response"]
+        return resp["username"]
 
     def _auth(self):
         if self._org_basic_auth_disabled() and self.username != "admin":
@@ -349,22 +350,22 @@ class _Connection:
             if not token:
                 raise ValueError("No token supplied")
             self.__set_token(token)
-            self._username = self._get_user_from_session()
-            self._password = cryptocode.encrypt(self.__get_user_token(), self.username)
+            password = self.__get_user_token()
         else:
             # https://documentation.atscale.com/2022.1.0/api/authentication
             header = request_utils.generate_headers()
             url = endpoints._endpoint_auth_bearer(self)
             if not self.username:
-                username = get_string_input(msg=f"Please enter your AtScale username: ")
-                self._username = username
+                username = input_utils.get_string_input(msg=f"Please enter your AtScale username: ")
+            else:
+                username = self._username
+
             if self._password:
                 password = cryptocode.decrypt(self._password, self.username)
             else:
                 password = getpass.getpass(
-                    prompt=f"Please enter your AtScale password for user '{self.username}': "
+                    prompt=f"Please enter your AtScale password for user '{username}': "
                 )
-                self._password = cryptocode.encrypt(password, self.username)
 
             response = self.session.get(
                 url,
@@ -376,11 +377,17 @@ class _Connection:
                 self.__set_token(response.content.decode())
             elif response.status_code == 401:
                 self._password = None
-                raise atscale_errors.UserError(response.text)
+                raise atscale_errors.AuthenticationError(response.text)
             else:
                 self._password = None
                 resp = json.loads(response.text)
+                # this makes sense as we don't know what kind of error it is
                 raise Exception(resp["response"]["error"])
+        # if we get here it worked so persist the fields we want to keep
+        self._user_id = self._get_user_id_from_session()
+        # we want to pull the username from the server because auth is case insensitive which can cause problemns later
+        self._username = self._get_username()
+        self._password = cryptocode.encrypt(password, self._username)
 
     def _validate_license(
         self,
@@ -392,14 +399,14 @@ class _Connection:
             specific_feature_flag (str, optional): The specific feature flag to validate. Defaults to None to check all flags necessary for AI-Link.
         """
         response = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_engine_version(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_engine_version(self)
         )
         engine_version_string = response.text
         engine_version = float(
             engine_version_string.split(".")[0] + "." + engine_version_string.split(".")[1]
         )
         response = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_license_details(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_license_details(self)
         )
         resp = json.loads(response.text)
         if not specific_feature_flag:
@@ -423,7 +430,7 @@ class _Connection:
                 or resp["response"]["content"]["features"]["ai-link"] is False
             ):
                 self.__set_token(None)
-                raise atscale_errors.AuthenticationError(
+                raise atscale_errors.InaccessibleAPIError(
                     "AI-Link is not licensed for your AtScale server."
                 )
             return True
@@ -442,18 +449,18 @@ class _Connection:
         server.
 
         Returns:
-            boolean: whether this object has connected to the server and authenticated.
+            bool: whether this object has connected to the server and authenticated.
         """
         if self.__token is not None:
             return True
         else:
             return False
 
-    def _get_orgs(self) -> List[dict]:
+    def _get_orgs(self) -> List[Dict]:
         """Get a list of metadata for all organizations available to the connection.
 
         Returns:
-            list(dict): a list of dictionaries providing metadata per organization
+            List(Dict): a list of dictionaries providing metadata per organization
         """
         self._check_connected()
 
@@ -461,7 +468,7 @@ class _Connection:
         # https://documentation.atscale.com/2022.1.0/api-ref/organizations
         # url = f'{self.server}:{self.design_center_server_port}/api/1.0/org'
         # submit request, check for errors which will raise exceptions if there are any
-        # response = self._submit_request(request_type=RequestType.GET, url=url)
+        # response = self._submit_request(request_type=enums.RequestType.GET, url=url)
         # if we get down here, no exceptions raised, so parse response
         # return json.loads(response.content)['response']
 
@@ -471,7 +478,7 @@ class _Connection:
 
     def _get_orgs_for_all_users(self):
         url = endpoints._endpoint_login_screen(self)
-        resp = self._submit_request(request_type=RequestType.GET, url=url)
+        resp = self._submit_request(request_type=enums.RequestType.GET, url=url)
         match = re.search("window\\.organizations = (.*?]);", str(resp.content))
         match = match[1]
         match = unescape(match).encode("utf-8").decode("unicode_escape")
@@ -482,46 +489,43 @@ class _Connection:
         """Uses an established connection to enable the user to select from the orgs they have access to.
         This is different from setting the organization directly, for which there is a property and associated
         setter.
-
-        Raises:
-            UserError: error if there is no connection already established
         """
         orgs = self._get_orgs()
 
-        org = choose_id_and_name_from_dict_list(orgs, "Please choose an organization:")
+        org = input_utils.choose_id_and_name_from_dict_list(orgs, "Please choose an organization:")
         if org is not None:
             self.organization = org["id"]
 
     def _select_org_pre_auth(self):
         """Same as select_org but will list all organizations regardless of user access"""
         orgs = self._get_orgs_for_all_users()
-        org = choose_id_and_name_from_dict_list(dcts=orgs, prompt="Please choose an organization:")
+        org = input_utils.choose_id_and_name_from_dict_list(
+            dcts=orgs, prompt="Please choose an organization:"
+        )
         if org is not None:
             self.organization = org["id"]
         else:
-            raise atscale_errors.UserError(
+            raise atscale_errors.WorkFlowError(
                 "An organization must be selected before authentication occurs."
             )
 
     def _get_connection_groups(self) -> list:
         u = endpoints._endpoint_connection_groups(self)
         # this call will handle or raise any errors
-        tmp = self._submit_request(request_type=RequestType.GET, url=u)
-        # bunch of parsing I'm just going to wrap in a try and if any o fit fails I'll log and raise
-        try:
-            content = json.loads(tmp.content)
-            if content["response"]["results"].setdefault("count", 0) < 1:
-                raise atscale_errors.UserError("No connection groups found.")
-            return content["response"]["results"]["values"]
-        except atscale_errors.UserError as err:
-            raise Exception("No connection groups found in _get_connection_groups")
-        except:
-            raise Exception("Error encountered while parsing connection groups.")
+        tmp = self._submit_request(request_type=enums.RequestType.GET, url=u)
+        # bunch of parsing I'm just going to wrap in a try and if any of it fails I'll log and raise
+        content = json.loads(tmp.content)
+        if content["response"]["results"].get("count", 0) < 1:
+            raise atscale_errors.AtScaleServerError(
+                "No connection groups found. Make "
+                "sure there is a warehouse connection in the AtScale UI"
+            )
+        return content["response"]["results"]["values"]
 
     def _get_published_projects(self):
         url = endpoints._endpoint_published_project_list(self)
         # submit request, check for errors which will raise exceptions if there are any
-        response = self._submit_request(request_type=RequestType.GET, url=url)
+        response = self._submit_request(request_type=enums.RequestType.GET, url=url)
         # if we get down here, no exceptions raised, so parse response
         return json.loads(response.content)["response"]
 
@@ -531,16 +535,13 @@ class _Connection:
         will only return draft projects since it indicates full json is returned and that doesn't
         happen with published projects.
 
-        Raises:
-            Exception:
-
         Returns:
-            json: full json spec of any projects
+            Dict: full json spec of any projects
         """
         # construct the request url
         url = endpoints._endpoint_list_projects(self)
         # submit request, check for errors which will raise exceptions if there are any
-        response = self._submit_request(request_type=RequestType.GET, url=url)
+        response = self._submit_request(request_type=enums.RequestType.GET, url=url)
         # if we get down here, no exceptions raised, so parse response
         resp = json.loads(response.content)["response"]
         return resp
@@ -548,22 +549,18 @@ class _Connection:
     def _get_draft_project_dict(
         self,
         draft_project_id: str,
-    ) -> dict:
+    ) -> Dict:
         """Get the draft project json and convert to a dict.
 
         Args:
             draft_project_id (str): The id for the draft project (i.e. not published project) to be retrieved.
 
-        Raises:
-            UserError: If there is no connection this error will be raised.
-            Exception: If there is some other problem communicating with the atscale instance an exception may be raised
-
         Returns:
-            dict: the dict representation of the draft project, or None if no project exists for the provided draft_project_id
+            Dict: the dict representation of the draft project, or None if no project exists for the provided draft_project_id
         """
         # construct the request url
-        url = endpoints._endpoint_design_org(self, f"/project/{draft_project_id}")
-        response = self._submit_request(request_type=RequestType.GET, url=url)
+        url = endpoints._endpoint_design_draft_project(self, draft_project_id)
+        response = self._submit_request(request_type=enums.RequestType.GET, url=url)
         return json.loads(response.content)["response"]
 
     # hitting endpoints
@@ -608,8 +605,8 @@ class _Connection:
         done = False
         while attempts > 0 and done == False:
             response = self._submit_request(
-                request_type=RequestType.POST,
-                url=endpoints._endpoint_atscale_query(self, "/submit"),
+                request_type=enums.RequestType.POST,
+                url=endpoints._endpoint_atscale_query_submit(self),
                 data=json_data,
             )
             content = str(
@@ -634,9 +631,6 @@ class _Connection:
     def _get_jdbc_connection(self):
         """Returns a jaydebeapi connection to the data model
 
-        Raises:
-            UserError: If jdbc_driver_path is not set.
-
         Returns:
             _Connection: The jaydebeapi connection
         """
@@ -646,8 +640,8 @@ class _Connection:
             raise atscale_errors.AtScaleExtrasDependencyImportError("jdbc", str(e))
 
         if self.jdbc_driver_path == "":
-            raise atscale_errors.UserError(
-                "Cannot create jdbc connection because jdbc_driver_path is not set"
+            raise atscale_errors.WorkFlowError(
+                "Cannot create jdbc connection because jdbc_driver_path is not set on the Client"
             )
         return jaydebeapi.connect(
             self.jdbc_driver_class,
@@ -658,9 +652,6 @@ class _Connection:
 
     def _get_connected_warehouses(self) -> List[Dict]:
         """Returns metadata on all warehouses visible to the connection
-
-        Raises:
-            UserError: If no connection established.
 
         Returns:
             List[Dict]: The list of available warehouses
@@ -691,7 +682,7 @@ class _Connection:
         warehouses = self._get_connected_warehouses()
         warehouse = [w for w in warehouses if w["warehouse_id"] == warehouse_id]  # single item list
         if len(warehouse) == 0:
-            raise atscale_errors.UserError(
+            raise atscale_errors.ModelingError(
                 f"No warehouse exists in the connection with the warehouse_id '{warehouse_id}'. "
                 f"The following warehouses are present: {warehouses}"
             )
@@ -707,7 +698,7 @@ class _Connection:
         """Get a list of databases the organization can access in the provided warehouse.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
 
         Returns:
             List[str]: The list of available databases
@@ -715,12 +706,11 @@ class _Connection:
 
         self._check_connected()
 
-        # decided only make a dedicated endpoint in endpoints.py if it wouldn't require add parameters
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables/cacheRefresh")
-        response = self._submit_request(request_type=RequestType.POST, url=u, data="")
+        u = endpoints._endpoint_warehouse_tables_cacheRefresh(self, warehouse_id)
+        response = self._submit_request(request_type=enums.RequestType.POST, url=u, data="")
 
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/databases")
-        response = self._submit_request(request_type=RequestType.GET, url=u)
+        u = endpoints._endpoint_warehouse_databases(self, warehouse_id)
+        response = self._submit_request(request_type=enums.RequestType.GET, url=u)
         return json.loads(response.content)["response"]
 
     def _get_connected_schemas(
@@ -731,7 +721,7 @@ class _Connection:
         """Get a list of schemas the organization can access in the provided warehouse and database.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
             database (str): The database to use.
 
         Returns:
@@ -740,14 +730,11 @@ class _Connection:
 
         self._check_connected()
 
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables/cacheRefresh")
-        response = self._submit_request(request_type=RequestType.POST, url=u, data="")
-        if database:
-            info = f"?database={database}"
-        else:
-            info = ""
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/schemas{info}")
-        response = self._submit_request(request_type=RequestType.GET, url=u)
+        u = endpoints._endpoint_warehouse_tables_cacheRefresh(self, warehouse_id)
+        response = self._submit_request(request_type=enums.RequestType.POST, url=u, data="")
+
+        u = endpoints._endpoint_warehouse_all_schemas(self, warehouse_id, database)
+        response = self._submit_request(request_type=enums.RequestType.GET, url=u)
         return json.loads(response.content)["response"]
 
     def _get_connected_tables(
@@ -759,9 +746,9 @@ class _Connection:
         """Get a list of tables the organization can access in the provided warehouse, database, and schema.
 
         Args:
-            warehouse_id (str): The atscale warehouse connection to use.
+            warehouse_id (str): The AtScale warehouse connection to use.
             database (str): The database to use.
-            schema (str,): The schema to use.
+            schema (str): The schema to use.
 
         Returns:
             List[str]: The list of available tables
@@ -769,14 +756,16 @@ class _Connection:
 
         self._check_connected()
 
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables/cacheRefresh")
-        response = self._submit_request(request_type=RequestType.POST, url=u, data="")
-        if database is not None:
-            info = f"?database={database}&schema={schema}"
-        else:
-            info = f"?schema={schema}"
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables{info}")
-        response = self._submit_request(request_type=RequestType.GET, url=u)
+        u = endpoints._endpoint_warehouse_tables_cacheRefresh(self, warehouse_id)
+        response = self._submit_request(request_type=enums.RequestType.POST, url=u, data="")
+
+        u = endpoints._endpoint_warehouse_all_tables(
+            self,
+            warehouse_id=warehouse_id,
+            schema=schema,
+            database=database,
+        )
+        response = self._submit_request(request_type=enums.RequestType.GET, url=u)
         return json.loads(response.content)["response"]
 
     def _get_query_columns(
@@ -787,7 +776,7 @@ class _Connection:
         """Get all columns of a direct query, to the given warehouse_id, as they are represented by AtScale.
 
         Args:
-            warehouse_id (str): The atscale warehouse to use.
+            warehouse_id (str): The AtScale warehouse to use.
             query (str): A valid query for the warehouse of the given id, of which to return the resulting columns
 
         Returns:
@@ -796,14 +785,14 @@ class _Connection:
         self._check_connected()
 
         # cache refresh
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables/cacheRefresh")
-        self._submit_request(request_type=RequestType.POST, url=u)
+        u = endpoints._endpoint_warehouse_tables_cacheRefresh(self, warehouse_id)
+        self._submit_request(request_type=enums.RequestType.POST, url=u)
 
         # preview query
-        url = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/query/info")
+        url = endpoints._endpoint_warehouse_query_info(self, warehouse_id)
         payload = {"query": query}
         response = self._submit_request(
-            request_type=RequestType.POST, url=url, data=json.dumps(payload)
+            request_type=enums.RequestType.POST, url=url, data=json.dumps(payload)
         )
         # parse response into tuples of name and data-type
         columns = [
@@ -823,28 +812,28 @@ class _Connection:
         """Get all columns in a given table
 
         Args:
-            warehouse_id (str): The atscale warehouse to use.
+            warehouse_id (str): The AtScale warehouse to use.
             table_name (str): The name of the table to use.
             database (str, optional): The database to use. Defaults to None to use default database
             schema (str, optional): The schema to use. Defaults to None to use default schema
             expected_columns (List[str], optional): A list of expected column names to validate. Defaults to None
 
         Returns:
-             List[Tuple]: Pairs of the columns and data-types (respectively) of the passed table
+            List[Tuple]: Pairs of the columns and data-types (respectively) of the passed table
         """
         self._check_connected()
 
-        u = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/tables/cacheRefresh")
-        self._submit_request(request_type=RequestType.POST, url=u, data="")
+        u = endpoints._endpoint_warehouse_tables_cacheRefresh(self, warehouse_id)
+        self._submit_request(request_type=enums.RequestType.POST, url=u, data="")
 
-        url = endpoints._endpoint_warehouse(self, f"/conn/{warehouse_id}/table/{table_name}/info")
-        if database:
-            url += f"?database={database}"
-            if schema:
-                url += f"&schema={schema}"
-        elif schema:
-            url += f"?schema={schema}"
-        response = self._submit_request(request_type=RequestType.GET, url=url)
+        url = endpoints._endpoint_warehouse_single_table_info(
+            self,
+            warehouse_id=warehouse_id,
+            table=table_name,
+            schema=schema,
+            database=database,
+        )
+        response = self._submit_request(request_type=enums.RequestType.GET, url=url)
         table_columns = [
             (x["name"], x["column-type"]["data-type"])
             for x in json.loads(response.content)["response"]["columns"]
@@ -874,8 +863,8 @@ class _Connection:
         Returns:
             bool: Whether the unpublish was successful
         """
-        u = endpoints._endpoint_draft_project(self, f"/schema/{published_project_id}")
-        response = self._submit_request(request_type=RequestType.DELETE, url=u)
+        u = endpoints._endpoint_draft_project_unpublish(self, published_project_id)
+        response = self._submit_request(request_type=enums.RequestType.DELETE, url=u)
         if response.status_code == 200:
             return True
         else:
@@ -886,11 +875,11 @@ class _Connection:
         self,
         err_msg=None,
     ):
-        outbound_error = "Please establish a connection by calling _connect() first."
+        outbound_error = "No connection established to AtScale, please establish a connection by calling Client.connect()."
         if err_msg:
             outbound_error = err_msg
         if not self._connected():
-            raise atscale_errors.UserError(outbound_error)
+            raise atscale_errors.AuthenticationError(outbound_error)
 
     def _org_basic_auth_disabled(self) -> bool:
         """Internal function to check if basic authentication is disabled for the current org
@@ -900,7 +889,7 @@ class _Connection:
             bool: Whether basic authentication is disabled.
         """
         response = self._submit_request(
-            request_type=RequestType.GET, url=endpoints._endpoint_login_screen(self)
+            request_type=enums.RequestType.GET, url=endpoints._endpoint_login_screen(self)
         )
 
         match = re.search("window\\.organizations = (.*?]);", str(response.content))
@@ -914,12 +903,14 @@ class _Connection:
                     return True
                 else:
                     return False
-        raise atscale_errors.UserError(f"Unable to find organization: {self.organization}")
+        raise atscale_errors.ObjectNotFoundError(
+            f"Unable to find organization: {self.organization}"
+        )
 
     def __get_user_token(self):
         try:
             response = self._submit_request(
-                request_type=RequestType.GET, url=endpoints._endpoint_user_account(self)
+                request_type=enums.RequestType.GET, url=endpoints._endpoint_user_account(self)
             )
             token = json.loads(response.content).get("response", {}).get("secret_token")
             if token:

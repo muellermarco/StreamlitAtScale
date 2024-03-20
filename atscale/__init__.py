@@ -1,5 +1,5 @@
 r"""
-# Welcome to the API documentation of AI-Link Version 2.5.4
+# Welcome to the API documentation of AI-Link Version 2.6.1
 
 Here you will find the full documentation of all publicly facing functions of AI-Link.
 """
@@ -12,4 +12,4 @@ logging.basicConfig(
     level=logging.WARNING,
 )
 
-__all__ = ["base", "client", "data_model", "db", "eda", "project", "utils"]
+__all__ = ["base", "client", "data_model", "db", "eda", "project"]

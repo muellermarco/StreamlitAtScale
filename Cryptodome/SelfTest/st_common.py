@@ -26,7 +26,7 @@
 
 import unittest
 import binascii
-from Cryptodome.Util.py3compat import b
+from Crypto.Util.py3compat import b
 
 
 def list_test_cases(class_):

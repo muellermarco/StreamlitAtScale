@@ -28,14 +28,14 @@
 # POSSIBILITY OF SUCH DAMAGE.
 # ===================================================================
 
-import Cryptodome.Util.number
-from Cryptodome.Util.number import ceil_div, bytes_to_long, long_to_bytes
-from Cryptodome.Util.asn1 import DerSequence, DerNull, DerOctetString, DerObjectId
+import Crypto.Util.number
+from Crypto.Util.number import ceil_div, bytes_to_long, long_to_bytes
+from Crypto.Util.asn1 import DerSequence, DerNull, DerOctetString, DerObjectId
 
 class PKCS115_SigScheme:
     """A signature object for ``RSASSA-PKCS1-v1_5``.
     Do not instantiate directly.
-    Use :func:`Cryptodome.Signature.pkcs1_15.new`.
+    Use :func:`Crypto.Signature.pkcs1_15.new`.
     """
 
     def __init__(self, rsa_key):
@@ -60,7 +60,7 @@ class PKCS115_SigScheme:
         `section 8.2.1 of RFC8017 <https://tools.ietf.org/html/rfc8017#page-36>`_.
 
         :parameter msg_hash:
-            This is an object from the :mod:`Cryptodome.Hash` package.
+            This is an object from the :mod:`Crypto.Hash` package.
             It has been used to digest the message to sign.
         :type msg_hash: hash object
 
@@ -70,17 +70,18 @@ class PKCS115_SigScheme:
         """
 
         # See 8.2.1 in RFC3447
-        modBits = Cryptodome.Util.number.size(self._key.n)
+        modBits = Crypto.Util.number.size(self._key.n)
         k = ceil_div(modBits,8) # Convert from bits to bytes
 
         # Step 1
         em = _EMSA_PKCS1_V1_5_ENCODE(msg_hash, k)
         # Step 2a (OS2IP)
         em_int = bytes_to_long(em)
-        # Step 2b (RSASP1)
-        m_int = self._key._decrypt(em_int)
-        # Step 2c (I2OSP)
-        signature = long_to_bytes(m_int, k)
+        # Step 2b (RSASP1) and Step 2c (I2OSP)
+        signature = self._key._decrypt_to_bytes(em_int)
+        # Verify no faults occurred
+        if em_int != pow(bytes_to_long(signature), self._key.e, self._key.n):
+            raise ValueError("Fault detected in RSA private key operation")
         return signature
 
     def verify(self, msg_hash, signature):
@@ -92,7 +93,7 @@ class PKCS115_SigScheme:
 
         :parameter msg_hash:
             The hash that was carried out over the message. This is an object
-            belonging to the :mod:`Cryptodome.Hash` module.
+            belonging to the :mod:`Crypto.Hash` module.
         :type parameter: hash object
 
         :parameter signature:
@@ -103,7 +104,7 @@ class PKCS115_SigScheme:
         """
 
         # See 8.2.2 in RFC3447
-        modBits = Cryptodome.Util.number.size(self._key.n)
+        modBits = Crypto.Util.number.size(self._key.n)
         k = ceil_div(modBits, 8) # Convert from bits to bytes
 
         # Step 1
@@ -202,7 +203,7 @@ def _EMSA_PKCS1_V1_5_ENCODE(msg_hash, emLen, with_hash_parameters=True):
     # We need at least 11 bytes for the remaining data: 3 fixed bytes and
     # at least 8 bytes of padding).
     if emLen<len(digestInfo)+11:
-        raise TypeError("Selected hash algorithm has a too long digest (%d bytes)." % len(digest))
+        raise TypeError("DigestInfo is too long for this RSA key (%d bytes)." % len(digestInfo))
     PS = b'\xFF' * (emLen - len(digestInfo) - 3)
     return b'\x00\x01' + PS + b'\x00' + digestInfo
 
@@ -212,7 +213,7 @@ def new(rsa_key):
 
     :parameter rsa_key:
       The RSA key to use for signing or verifying the message.
-      This is a :class:`Cryptodome.PublicKey.RSA` object.
+      This is a :class:`Crypto.PublicKey.RSA` object.
       Signing is only possible when ``rsa_key`` is a **private** RSA key.
     :type rsa_key: RSA object
 

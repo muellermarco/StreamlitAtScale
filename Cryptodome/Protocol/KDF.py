@@ -26,25 +26,25 @@ import re
 import struct
 from functools import reduce
 
-from Cryptodome.Util.py3compat import (tobytes, bord, _copy_bytes, iter_range,
+from Crypto.Util.py3compat import (tobytes, bord, _copy_bytes, iter_range,
                                    tostr, bchr, bstr)
 
-from Cryptodome.Hash import SHA1, SHA256, HMAC, CMAC, BLAKE2s
-from Cryptodome.Util.strxor import strxor
-from Cryptodome.Random import get_random_bytes
-from Cryptodome.Util.number import size as bit_size, long_to_bytes, bytes_to_long
+from Crypto.Hash import SHA1, SHA256, HMAC, CMAC, BLAKE2s
+from Crypto.Util.strxor import strxor
+from Crypto.Random import get_random_bytes
+from Crypto.Util.number import size as bit_size, long_to_bytes, bytes_to_long
 
-from Cryptodome.Util._raw_api import (load_pycryptodome_raw_lib,
+from Crypto.Util._raw_api import (load_pycryptodome_raw_lib,
                                   create_string_buffer,
                                   get_raw_buffer, c_size_t)
 
-_raw_salsa20_lib = load_pycryptodome_raw_lib("Cryptodome.Cipher._Salsa20",
+_raw_salsa20_lib = load_pycryptodome_raw_lib("Crypto.Cipher._Salsa20",
                     """
                     int Salsa20_8_core(const uint8_t *x, const uint8_t *y,
                                        uint8_t *out);
                     """)
 
-_raw_scrypt_lib = load_pycryptodome_raw_lib("Cryptodome.Protocol._scrypt",
+_raw_scrypt_lib = load_pycryptodome_raw_lib("Crypto.Protocol._scrypt",
                     """
                     typedef int (core_t)(const uint8_t [64], const uint8_t [64], uint8_t [64]);
                     int scryptROMix(const uint8_t *data_in, uint8_t *data_out,
@@ -68,14 +68,14 @@ def PBKDF1(password, salt, dkLen, count=1000, hashAlgo=None):
         chosen for each derivation.
      dkLen (integer):
         The length of the desired key. The default is 16 bytes, suitable for
-        instance for :mod:`Cryptodome.Cipher.AES`.
+        instance for :mod:`Crypto.Cipher.AES`.
      count (integer):
         The number of iterations to carry out. The recommendation is 1000 or
         more.
      hashAlgo (module):
-        The hash algorithm to use, as a module or an object from the :mod:`Cryptodome.Hash` package.
+        The hash algorithm to use, as a module or an object from the :mod:`Crypto.Hash` package.
         The digest length must be no shorter than ``dkLen``.
-        The default algorithm is :mod:`Cryptodome.Hash.SHA1`.
+        The default algorithm is :mod:`Crypto.Hash.SHA1`.
 
     Return:
         A byte string of length ``dkLen`` that can be used as key.
@@ -134,7 +134,7 @@ def PBKDF2(password, salt, dkLen=16, count=1000, prf=None, hmac_hash_module=None
         The slower the algorithm, the more secure the derivation function.
         If not specified, **HMAC-SHA1** is used.
      hmac_hash_module (module):
-        A module from ``Cryptodome.Hash`` implementing a Merkle-Damgard cryptographic
+        A module from ``Crypto.Hash`` implementing a Merkle-Damgard cryptographic
         hash, which PBKDF2 must use in combination with HMAC.
         This parameter is mutually exclusive with ``prf``.
 
@@ -199,7 +199,7 @@ class _S2V(object):
             A secret that can be used as key for CMACs
             based on ciphers from ``ciphermod``.
           ciphermod : module
-            A block cipher module from `Cryptodome.Cipher`.
+            A block cipher module from `Crypto.Cipher`.
           cipher_params : dictionary
             A set of extra parameters to use to create a cipher instance.
         """
@@ -225,7 +225,7 @@ class _S2V(object):
             A secret that can be used as key for CMACs
             based on ciphers from ``ciphermod``.
           ciphermod : module
-            A block cipher module from `Cryptodome.Cipher`.
+            A block cipher module from `Crypto.Cipher`.
         """
         return _S2V(key, ciphermod)
 
@@ -295,8 +295,8 @@ def HKDF(master, key_len, salt, hashmod, num_keys=1, context=None):
         Ideally, it is as long as the digest size of the chosen hash.
         If empty, a string of zeroes in used.
      hashmod (module):
-        A cryptographic hash algorithm from :mod:`Cryptodome.Hash`.
-        :mod:`Cryptodome.Hash.SHA512` is a good choice.
+        A cryptographic hash algorithm from :mod:`Crypto.Hash`.
+        :mod:`Crypto.Hash.SHA512` is a good choice.
      num_keys (integer):
         The number of keys to derive. Every key is :data:`key_len` bytes long.
         The maximum cumulative length of all keys is
@@ -473,7 +473,7 @@ def _bcrypt_decode(data):
 
 
 def _bcrypt_hash(password, cost, salt, constant, invert):
-    from Cryptodome.Cipher import _EKSBlowfish
+    from Crypto.Cipher import _EKSBlowfish
 
     if len(password) > 72:
         raise ValueError("The password is too long. It must be 72 bytes at most.")
