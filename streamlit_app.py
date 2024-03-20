@@ -6,10 +6,9 @@ from atscale.project import Project
 st.write("My first App")
 
 client = Client(server=st.secrets["atscale_host"],
-                username="asdf",
-                password="",
+                username=st.secrets["atscale_user"],
+                password=st.secrets["atscale_password"],
                 organization='default'
                )
 
-test = client.connect()
-st.write(test)
+#test = client.connect()
