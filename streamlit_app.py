@@ -12,7 +12,7 @@ client = Client(server=st.secrets["atscale_host"],
                )
 """
 
-client = Client(server="asb",
+client = Client(server=st.secrets["atscale_host"],
                 username="asdf",
                 password="",
                 organization='default'
