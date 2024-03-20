@@ -7,7 +7,7 @@ from atscale.project import Project
 st.write("My first App")
 
 client = Client(server='http://ailink-public.atscale.com',
-                username='marco',
+                username=st.secrets["atscale_user"],
                 password='8Z2Qvr#WK9',
                 organization='default'
                )
