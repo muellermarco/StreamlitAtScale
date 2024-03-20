@@ -20,3 +20,5 @@ data_model = project.select_data_model("b89a2fb7-74f4-4828-706e-70f7186e10a0")
 features_cat = data_model.get_all_categorical_feature_names()
 
 st.write(features_cat)
+
+st.write("new")
