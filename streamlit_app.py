@@ -24,9 +24,9 @@ if 'connected' not in st.session_state:
 
 #Sales Insights
 if 'project' not in st.session_state:
-    st.session_state['project'] = st.session_state['client'].select_project(published_project_id='3d965074-0e49-42df-4151-74541f019bd0',draft_project_id='2e0203d7-fa65-4c28-7b65-357eb4aee0ea')
+    st.session_state['project'] = st.session_state['client'].select_project(published_project_id=st.secrets["atscale_project_id_published"],draft_project_id=st.secrets["atscale_project_id_draft"])
 if 'data_model' not in st.session_state:    
-    st.session_state['data_model'] = st.session_state['project'].select_data_model("b89a2fb7-74f4-4828-706e-70f7186e10a0")
+    st.session_state['data_model'] = st.session_state['project'].select_data_model(st.secrets["atscale_model"])
 
 
 if 'dimensions' not in st.session_state:
