@@ -28,4 +28,4 @@ Distributed under the MIT License. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
-Marco Müller - [@twitter_handle](https://twitter.com/twitter_handle) -marco.mueller.dev@gmail.com
+Marco Müller - (https://twitter.com/twitter_handle) -marco.mueller.dev@gmail.com
