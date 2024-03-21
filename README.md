@@ -18,3 +18,18 @@ atscale_host = ""
 atscale_project_id_draft = ""
 atscale_project_id_published = ""
 ```
+
+
+<!-- LICENSE -->
+## License
+
+Distributed under the MIT License. See `LICENSE.txt` for more information.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+
+<!-- CONTACT -->
+## Contact
+
+Marco Müller - [@twitter_handle](https://twitter.com/twitter_handle) -marco.mueller.dev@gmail.com
