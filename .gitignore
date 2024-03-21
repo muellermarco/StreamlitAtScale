@@ -160,6 +160,8 @@ cython_debug/
 #.idea/
 
 
-#Macos files
+#Marcos files
 .DS_Store
 *.ipynb
+.gitignore
+.devcontainer
