@@ -3,6 +3,10 @@ from atscale.client import Client
 from atscale.data_model import DataModel
 from atscale.project import Project
 import pandas as pd
+from streamlit_theme import st_theme
+
+theme = st_theme()
+st.write(theme)
 
 st.image("AtScale_Logo.png")
 

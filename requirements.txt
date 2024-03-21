@@ -2,3 +2,4 @@ atscale
 cryptocode
 pycryptodome
 streamlit
+streamlit_theme
