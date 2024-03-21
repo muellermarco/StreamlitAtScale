@@ -7,10 +7,10 @@ import streamlit_theme as stt
 
 stt.set_theme({'primary': '#1b3388'})
 
-st.image("AtScale_Logo.png")
+st.sidebar.image("AtScale_Logo.png")
 
 
-st.title("Python API Demo")
+st.title("Atscale API Demo")
 #st.secrets["atscale_host"]
 if 'client' not in st.session_state:
     st.session_state['client'] = Client(server=st.secrets["atscale_host"],
@@ -47,9 +47,9 @@ if 'measures' not in st.session_state:
 
 #feature_name_map
 
-selected_dimension = st.selectbox('What Dimensions do you want to use?', st.session_state['dimensions'])
+selected_dimension = st.sidebar.selectbox('What Dimensions do you want to use?', st.session_state['dimensions'])
 
-selected_measure = st.selectbox('What Measures do you want to use?', st.session_state['measures'])
+selected_measure = st.sidebar.selectbox('What Measures do you want to use?', st.session_state['measures'])
 
 dynamic_data = st.session_state['data_model'].get_data(feature_list=[st.session_state['dimensions'][selected_dimension], st.session_state['measures'][selected_measure]], comment='Streamlit App by Marco Mueller')
 
