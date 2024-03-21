@@ -9,6 +9,7 @@ stt.set_theme({'primary': '#1b3388'})
 
 st.image("AtScale_Logo.png")
 
+
 st.title("Python API Demo")
 #st.secrets["atscale_host"]
 if 'client' not in st.session_state:
